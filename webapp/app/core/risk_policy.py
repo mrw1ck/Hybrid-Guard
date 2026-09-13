@@ -1,6 +1,4 @@
-from urllib.parse import urlparse
-
-from url_ml.feature_engineering import normalize_url
+from url_ml.feature_engineering import normalize_url, safe_urlparse
 from webapp.app.config import (
     KNOWN_LEGIT_LOGIN_DOMAINS,
     MALICIOUS_THRESHOLD,
@@ -13,7 +11,7 @@ from webapp.app.config import (
 
 def detect_triggers(url: str, features: dict) -> list[str]:
     normalized = normalize_url(url)
-    parsed = urlparse(normalized)
+    parsed = safe_urlparse(normalized)
     hostname = (parsed.hostname or "").lower()
     path_query = ((parsed.path or "") + " " + (parsed.query or "")).lower()
 

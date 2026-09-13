@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 import joblib
 import pandas as pd
 
-from url_ml.feature_engineering import extract_url_features, normalize_url
+from url_ml.feature_engineering import extract_url_features, normalize_url, safe_urlparse
 
 
 SUSPICIOUS_KEYWORDS = {
@@ -496,7 +496,7 @@ def fetch_http_signals(url: str, timeout: int, cache: dict, cache_hours: int, ma
 
 def detect_risk_triggers(url: str, features: dict) -> list[str]:
     normalized = normalize_url(url)
-    parsed = urlparse(normalized)
+    parsed = safe_urlparse(normalized)
     hostname = (parsed.hostname or "").lower()
     path_query = ((parsed.path or "") + " " + (parsed.query or "")).lower()
 
@@ -619,7 +619,7 @@ def run_external_enrichment(
     include_http: bool,
 ) -> dict:
     normalized_url = normalize_url(url)
-    parsed = urlparse(normalized_url)
+    parsed = safe_urlparse(normalized_url)
     hostname = (parsed.hostname or "").strip().lower()
     cache_path = Path(args.cache_file)
     cache = load_cache(cache_path)

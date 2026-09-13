@@ -51,6 +51,7 @@ class DeepURLClassifier:
             early_stopping=True,
             n_iter_no_change=6,
             random_state=self.config.random_state,
+            verbose=True,
         )
 
     def _normalize_urls(self, urls: Iterable[str]) -> list[str]:
@@ -61,8 +62,10 @@ class DeepURLClassifier:
         numeric_values = numeric_frame.astype(float).to_numpy(copy=True)
 
         if fit:
+            print(f"[DL] Vectorizing char n-grams ({self.config.ngram_min}-{self.config.ngram_max} ngrams, max {self.config.max_features} features)...")
             url_matrix = self.vectorizer.fit_transform(normalized_urls)
             numeric_scaled = self.scaler.fit_transform(numeric_values)
+            print(f"[DL] TF-IDF matrix built with shape: {url_matrix.shape}")
         else:
             url_matrix = self.vectorizer.transform(normalized_urls)
             numeric_scaled = self.scaler.transform(numeric_values)
@@ -72,8 +75,10 @@ class DeepURLClassifier:
 
     def fit(self, urls: Sequence[str], numeric_frame: pd.DataFrame, labels: Sequence[int]) -> "DeepURLClassifier":
         matrix = self._build_matrix(urls, numeric_frame, fit=True)
+        print(f"[DL] Training neural network on input shape {matrix.shape} across {len(labels)} samples...")
         y = np.asarray(labels, dtype=int)
         self.classifier.fit(matrix, y)
+        print("[DL] Neural network training complete.")
         return self
 
     def predict_with_urls(self, urls: Sequence[str], numeric_frame: pd.DataFrame) -> np.ndarray:

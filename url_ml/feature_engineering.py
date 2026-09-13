@@ -85,9 +85,19 @@ def normalize_url(raw_url: str) -> str:
     return url
 
 
+def safe_urlparse(url: str):
+    try:
+        return urlparse(url)
+    except ValueError:
+        try:
+            return urlparse(url.replace("[", "%5B").replace("]", "%5D"))
+        except ValueError:
+            return urlparse("")
+
+
 def extract_url_features(raw_url: str) -> Dict[str, float]:
     url = normalize_url(raw_url)
-    parsed = urlparse(url)
+    parsed = safe_urlparse(url)
     hostname = _extract_hostname(parsed)
     tld = _extract_tld(hostname)
 

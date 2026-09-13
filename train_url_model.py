@@ -53,9 +53,11 @@ def ensure_features(dataframe: pd.DataFrame) -> pd.DataFrame:
             "Dataset is missing required numeric feature columns and also has no 'url' column to regenerate them.",
         )
 
+    print(f"[*] Extracting {len(NUMERIC_FEATURES)} numeric features for {len(dataframe)} URLs...")
     generated_features = dataframe["url"].apply(extract_url_features).apply(pd.Series)
     for column in NUMERIC_FEATURES:
         dataframe[column] = generated_features[column]
+    print("[*] Feature extraction completed.")
     return dataframe
 
 
@@ -82,6 +84,7 @@ def build_model(args: argparse.Namespace):
             random_state=args.random_state,
             class_weight="balanced",
             n_jobs=-1,
+            verbose=2,
         )
 
     return DecisionTreeClassifier(
@@ -97,10 +100,12 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    print(f"[1/4] Loading dataset from: {data_path} ...")
     dataframe = pd.read_csv(data_path)
     if args.label_col not in dataframe.columns:
         raise ValueError(f"Missing label column: {args.label_col}")
 
+    print(f"[2/4] Preparing features and splitting dataset ({len(dataframe)} rows)...")
     dataframe = ensure_features(dataframe.copy())
     dataframe = dataframe.dropna(subset=[args.label_col])
 
@@ -116,7 +121,9 @@ def main() -> None:
         random_state=args.random_state,
         stratify=y,
     )
+    print(f"[*] Train set: {len(X_train)} samples | Test set: {len(X_test)} samples")
 
+    print(f"[3/4] Training model: {args.model.upper()}...")
     model = build_model(args)
     if args.model == "dl":
         model.fit(urls_train.tolist(), X_train, y_train.to_numpy())
@@ -124,6 +131,9 @@ def main() -> None:
     else:
         model.fit(X_train, y_train)
         predictions = model.predict(X_test)
+    print("[*] Training completed.")
+
+    print(f"[4/4] Evaluating model and saving artifacts to: {output_dir} ...")
 
     metrics = {
         "accuracy": float(accuracy_score(y_test, predictions)),
