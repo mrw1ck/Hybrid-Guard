@@ -137,6 +137,14 @@ def apply_adjustment(features: dict, checks: dict, hostname: str = "") -> tuple[
         adjustment -= 0.10
         reasons.append("Domain thuộc nền tảng uy tín và có SSL/DNS ổn định, giảm điểm nghi ngờ.")
 
+    # Hiệu chỉnh link trang chủ trần:
+    # Trong tập dữ liệu huấn luyện, 99.1% URL có path_len <= 1 là domain phishing/botnet trần,
+    # gây thiên lệch phạt oan các trang chủ hợp lệ.
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+    if is_clean_root and trusted_transport and not risky_tld and not host_has_risky_keyword:
+        adjustment -= 0.15
+        reasons.append("Hiệu chỉnh link trang chủ: kết nối SSL/DNS hợp lệ, không có từ khóa nhạy cảm hay TLD rủi ro.")
+
     keyword_hits = http_info.get("keyword_hits", [])
     if keyword_hits:
         keyword_score = min(0.10, 0.02 * len(keyword_hits))
@@ -226,9 +234,6 @@ def apply_trust_guardrail(
     hostname: str,
 ) -> tuple[float, list[str]]:
     reasons = []
-    if not is_known_legit_domain(hostname):
-        return adjusted_probability, reasons
-
     dns_info = checks.get("dns", {})
     ssl_info = checks.get("ssl", {})
     http_info = checks.get("http", {})
@@ -255,12 +260,26 @@ def apply_trust_guardrail(
         or host_has_risky_keyword
     )
 
-    if strong_transport and good_http_status and low_redirect and not hard_red_flag:
-        cap = 0.22 if base_probability >= 0.80 else 0.20
+    known_legit = is_known_legit_domain(hostname)
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+
+    if known_legit:
+        if strong_transport and not hard_red_flag:
+            cap = 0.05 if (good_http_status and low_redirect) else 0.08
+            if adjusted_probability > cap:
+                adjusted_probability = cap
+                reasons.append(
+                    f"Áp dụng trust-guardrail: domain uy tín đã xác thực ({hostname}), SSL/DNS an toàn; giới hạn xác suất rủi ro ở mức tối thiểu ({int(cap*100)}%)."
+                )
+        return adjusted_probability, reasons
+
+    # Guardrail bổ sung cho các link trang chủ trần hợp lệ ngoài danh sách (giảm false positive)
+    if strong_transport and good_http_status and low_redirect and not hard_red_flag and is_clean_root:
+        cap = 0.15
         if adjusted_probability > cap:
             adjusted_probability = cap
             reasons.append(
-                "Áp dụng trust-guardrail: domain uy tín, SSL/DNS/HTTP ổn định nên giới hạn mức nghi ngờ để giảm false positive."
+                "Áp dụng root-domain guardrail: trang chủ có SSL/DNS chuẩn và không có dấu hiệu bất thường, giới hạn rủi ro tối đa 15%."
             )
 
     return adjusted_probability, reasons

@@ -15,7 +15,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", default="Dataset.csv", help="Path to labeled CSV dataset.")
     parser.add_argument("--url-col", default="url", help="URL column name.")
     parser.add_argument("--label-col", default="label", help="Label column name.")
-    parser.add_argument("--model-path", default="artifacts/url_phishing_model.joblib", help="Trained model artifact path.")
+    default_model = "artifacts/lgb_final/url_phishing_model.joblib" if Path("artifacts/lgb_final/url_phishing_model.joblib").exists() else "artifacts/url_phishing_model.joblib"
+    parser.add_argument("--model-path", default=default_model, help="Trained model artifact path.")
     parser.add_argument("--mode", choices=["ml", "hybrid"], default="ml", help="ml: model-only, hybrid: full analyzer.")
     parser.add_argument("--sample-size", type=int, default=0, help="Optional number of rows to evaluate.")
     parser.add_argument("--random-state", type=int, default=42, help="Random seed for sampling.")
@@ -87,16 +88,11 @@ def run_ml_mode(dataframe: pd.DataFrame, args: argparse.Namespace) -> pd.DataFra
 
     X = data[feature_names].astype(float)
 
-    if model_type == "dl" and hasattr(model, "predict_with_urls"):
-        urls = data[args.url_col].astype(str).tolist()
-        data["pred_binary"] = model.predict_with_urls(urls, X).astype(int)
-        data["pred_score"] = model.predict_proba_with_urls(urls, X)[:, 1].astype(float)
+    data["pred_binary"] = model.predict(X).astype(int)
+    if hasattr(model, "predict_proba"):
+        data["pred_score"] = model.predict_proba(X)[:, 1].astype(float)
     else:
-        data["pred_binary"] = model.predict(X).astype(int)
-        if hasattr(model, "predict_proba"):
-            data["pred_score"] = model.predict_proba(X)[:, 1].astype(float)
-        else:
-            data["pred_score"] = data["pred_binary"].astype(float)
+        data["pred_score"] = data["pred_binary"].astype(float)
 
     data["pred_label"] = data["pred_binary"].map({0: "benign", 1: "malicious"})
     return data
@@ -139,7 +135,13 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dataframe = pd.read_csv(args.data)
+    data_path = Path(args.data)
+    if not data_path.exists() and (data_path.parent / f"{data_path.name}.csv").exists():
+        data_path = data_path.parent / f"{data_path.name}.csv"
+    elif not data_path.exists() and Path("Dataset.csv.csv").exists():
+        data_path = Path("Dataset.csv.csv")
+
+    dataframe = pd.read_csv(data_path)
     if args.url_col not in dataframe.columns:
         raise ValueError(f"Missing URL column: {args.url_col}")
     if args.label_col not in dataframe.columns:

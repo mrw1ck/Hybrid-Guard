@@ -15,6 +15,14 @@ import joblib
 import pandas as pd
 
 from url_ml.feature_engineering import extract_url_features, normalize_url
+from webapp.app.config import KNOWN_LEGIT_LOGIN_DOMAINS
+
+
+def is_known_legit_domain(hostname: str) -> bool:
+    host = (hostname or "").lower().strip(".")
+    if not host:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in KNOWN_LEGIT_LOGIN_DOMAINS)
 
 
 SUSPICIOUS_KEYWORDS = {
@@ -65,7 +73,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Predict and debug whether a URL is benign or malicious.",
     )
-    parser.add_argument("--model-path", default="artifacts/url_phishing_model.joblib", help="Path to the trained model artifact.")
+    default_model = "artifacts/lgb_final/url_phishing_model.joblib" if Path("artifacts/lgb_final/url_phishing_model.joblib").exists() else "artifacts/url_phishing_model.joblib"
+    parser.add_argument("--model-path", default=default_model, help="Path to the trained model artifact.")
     parser.add_argument("--url", help="Single URL to inspect.")
     parser.add_argument("--url-file", help="Text file containing one URL per line.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output.")
@@ -588,6 +597,18 @@ def compute_enrichment_adjustment(features: dict, external_checks: dict) -> tupl
             adjustment -= 0.08
             reasons.append("Domain da ton tai lau nam, giam muc do nghi ngo.")
 
+    hostname = (features.get("dom", "") or "").lower().strip(".")
+    known_legit = is_known_legit_domain(hostname)
+    trusted_transport = bool(dns_info.get("resolved")) and bool(ssl_info.get("available")) and not bool(ssl_info.get("expired"))
+    if known_legit and trusted_transport:
+        adjustment -= 0.10
+        reasons.append("Domain thuoc nen tang uy tin va co SSL/DNS on dinh, giam diem nghi ngo.")
+
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+    if is_clean_root and trusted_transport and tld not in RISKY_TLDS:
+        adjustment -= 0.15
+        reasons.append("Hieu chinh link trang chu tran: ket noi SSL/DNS hop le, khong co dau hieu bat thuong.")
+
     http_info = external_checks.get("http", {})
     keyword_hits = http_info.get("keyword_hits", [])
     if keyword_hits:
@@ -680,18 +701,14 @@ def predict_url(url: str, artifact: dict, args: argparse.Namespace) -> dict:
     features = extract_url_features(url)
     feature_names = artifact["feature_names"]
     model = artifact["model"]
-    model_type = artifact.get("training", {}).get("model_type", "rf")
+    model_type = artifact.get("training", {}).get("model_type", "lgb")
     feature_frame = pd.DataFrame([{name: features[name] for name in feature_names}])
 
-    if model_type == "dl" and hasattr(model, "predict_with_urls"):
-        predicted_class = int(model.predict_with_urls([url], feature_frame)[0])
-        base_probability = float(model.predict_proba_with_urls([url], feature_frame)[0][1])
+    predicted_class = int(model.predict(feature_frame)[0])
+    if hasattr(model, "predict_proba"):
+        base_probability = float(model.predict_proba(feature_frame)[0][1])
     else:
-        predicted_class = int(model.predict(feature_frame)[0])
-        if hasattr(model, "predict_proba"):
-            base_probability = float(model.predict_proba(feature_frame)[0][1])
-        else:
-            base_probability = float(predicted_class)
+        base_probability = float(predicted_class)
 
     tld = str(features.get("tld", "")).lower().strip(".")
     trusted_tld = is_trusted_tld(tld)
@@ -768,6 +785,33 @@ def predict_url(url: str, artifact: dict, args: argparse.Namespace) -> dict:
             args.suspicious_threshold,
         )
         fusion_reasons = enrichment.get("adjustment_reasons", [])
+
+    # Áp dụng guardrail tương tự như trong webapp
+    hostname = (urlparse(normalize_url(url)).hostname or "").lower().strip(".")
+    known_legit = is_known_legit_domain(hostname)
+    dns_info = enrichment.get("checks", {}).get("dns", {})
+    ssl_info = enrichment.get("checks", {}).get("ssl", {})
+    http_info = enrichment.get("checks", {}).get("http", {})
+    strong_transport = bool(dns_info.get("resolved")) and bool(ssl_info.get("available")) and not bool(ssl_info.get("expired")) and features.get("is_https") == 1
+    good_http_status = http_info.get("status_code") in {200, 201, 204, 301, 302}
+    is_clean_root = int(features.get("path_len", 0)) <= 1 and int(features.get("query_len", 0)) == 0 and int(features.get("is_ip", 0)) == 0
+
+    if known_legit and strong_transport:
+        cap = 0.05 if good_http_status else 0.08
+        if final_probability > cap:
+            final_probability = cap
+            fusion_reasons.insert(0, f"Trust-guardrail: domain uy tin da xac thuc ({hostname}), gioi han rui ro toi da {int(cap*100)}%.")
+    elif strong_transport and good_http_status and is_clean_root and tld not in RISKY_TLDS:
+        cap = 0.15
+        if final_probability > cap:
+            final_probability = cap
+            fusion_reasons.insert(0, "Root-domain guardrail: trang chu co SSL/DNS chuan, gioi han rui ro toi da 15%.")
+
+    final_prediction = classify_probability(
+        final_probability,
+        args.malicious_threshold,
+        args.suspicious_threshold,
+    )
 
     return {
         "url": url,

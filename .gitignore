@@ -21,6 +21,10 @@ Thumbs.db
 # Runtime and local artifacts
 artifacts/
 Dataset.csv
+Dataset.csv.csv
+Dataset*.csv*
+Dataset_QR_All.csv
+QR_All_Malicious/
 ML.rar
 
 # Optional heavy outputs (uncomment if needed)

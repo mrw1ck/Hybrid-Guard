@@ -41,8 +41,9 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         return templates.TemplateResponse(
-            "index.html",
-            {
+            request=request,
+            name="index.html",
+            context={
                 "request": request,
                 "available_modes": sorted(analyzers.keys()),
                 "default_mode": default_mode,
@@ -53,4 +54,5 @@ def create_app() -> FastAPI:
     return app
 
 
+# Initialize application instance with all detected models (lgb, rf, dt)
 app = create_app()

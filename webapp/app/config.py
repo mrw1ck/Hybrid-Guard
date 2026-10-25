@@ -3,19 +3,35 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 
-MODEL_PATH = ARTIFACTS_DIR / "url_phishing_model.joblib"
+def _first_existing(*paths: Path) -> Path:
+    for p in paths:
+        if p.exists():
+            return p
+    return paths[0]
+
+
+LGB_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "lgb_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "lgb_model" / "url_phishing_model.joblib",
+)
+RF_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "rf_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "url_phishing_model.joblib",
+)
+DT_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "dt_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib",
+)
+MODEL_PATH = LGB_MODEL_PATH
 CACHE_PATH = ARTIFACTS_DIR / "web_external_cache.json"
 
-DL_MODEL_PATH = ARTIFACTS_DIR / "dl_smoke" / "url_phishing_model.joblib"
-DT_MODEL_PATH = ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib"
-
 MODEL_PATHS = {
-    "rf": MODEL_PATH,
-    "dl": DL_MODEL_PATH,
+    "lgb": LGB_MODEL_PATH,
+    "rf": RF_MODEL_PATH,
     "dt": DT_MODEL_PATH,
 }
 
-DEFAULT_MODEL_MODE = "rf"
+DEFAULT_MODEL_MODE = "lgb"
 
 DEFAULT_TIMEOUT_SECONDS = 8
 DEFAULT_CACHE_HOURS = 24
@@ -77,6 +93,7 @@ KNOWN_LEGIT_LOGIN_DOMAINS = {
     "whatsapp.com",
     "google.com",
     "youtube.com",
+    "youtu.be",
     "microsoft.com",
     "live.com",
     "outlook.com",
@@ -88,4 +105,14 @@ KNOWN_LEGIT_LOGIN_DOMAINS = {
     "gitlab.com",
     "paypal.com",
     "stripe.com",
+    "twitter.com",
+    "x.com",
+    "linkedin.com",
+    "netflix.com",
+    "wikipedia.org",
+    "cloudflare.com",
+    "yahoo.com",
+    "tiktok.com",
+    "zalo.me",
+    "vnexpress.net",
 }

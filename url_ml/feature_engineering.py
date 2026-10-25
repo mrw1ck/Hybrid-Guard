@@ -2,7 +2,7 @@ import math
 from collections import Counter
 from ipaddress import ip_address
 from typing import Dict
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 
 NUMERIC_FEATURES = [
@@ -85,9 +85,20 @@ def normalize_url(raw_url: str) -> str:
     return url
 
 
+def _safe_urlparse(url: str) -> ParseResult:
+    try:
+        return urlparse(url)
+    except ValueError:
+        sanitized = url.replace("[", "%5B").replace("]", "%5D")
+        try:
+            return urlparse(sanitized)
+        except ValueError:
+            return ParseResult(scheme="http", netloc="", path=url, params="", query="", fragment="")
+
+
 def extract_url_features(raw_url: str) -> Dict[str, float]:
     url = normalize_url(raw_url)
-    parsed = urlparse(url)
+    parsed = _safe_urlparse(url)
     hostname = _extract_hostname(parsed)
     tld = _extract_tld(hostname)
 

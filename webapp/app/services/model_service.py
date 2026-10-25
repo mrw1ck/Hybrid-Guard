@@ -10,26 +10,30 @@ class ModelService:
         self.model = artifact["model"]
         self.feature_names = artifact["feature_names"]
         self.feature_stats = artifact["feature_stats"]
-        self.model_type = artifact.get("training", {}).get("model_type", "rf")
+        self.model_type = artifact.get("training", {}).get("model_type", "lgb")
 
     def predict(self, url: str) -> tuple[dict, int, float]:
         features = extract_url_features(url)
         feature_frame = pd.DataFrame([{name: features[name] for name in self.feature_names}])
 
-        if self.model_type == "dl" and hasattr(self.model, "predict_with_urls"):
-            predicted_class = int(self.model.predict_with_urls([url], feature_frame)[0])
-            base_probability = float(self.model.predict_proba_with_urls([url], feature_frame)[0][1])
+        predicted_class = int(self.model.predict(feature_frame)[0])
+        if hasattr(self.model, "predict_proba"):
+            base_probability = float(self.model.predict_proba(feature_frame)[0][1])
         else:
-            predicted_class = int(self.model.predict(feature_frame)[0])
-            if hasattr(self.model, "predict_proba"):
-                base_probability = float(self.model.predict_proba(feature_frame)[0][1])
-            else:
-                base_probability = float(predicted_class)
+            base_probability = float(predicted_class)
 
         return features, predicted_class, base_probability
 
     def rank_features(self, features: dict, top_k: int = 8) -> list[dict]:
-        importances = getattr(self.model, "feature_importances_", [0.0] * len(self.feature_names))
+        importances = getattr(self.model, "feature_importances_", None)
+        if importances is None and hasattr(self.model, "named_steps"):
+            clf = self.model.named_steps.get("clf")
+            if hasattr(clf, "feature_importances_"):
+                importances = clf.feature_importances_
+
+        if importances is None:
+            importances = [0.0] * len(self.feature_names)
+
         ranked = []
         for feature_name, importance in zip(self.feature_names, importances):
             mean = self.feature_stats[feature_name]["mean"]
