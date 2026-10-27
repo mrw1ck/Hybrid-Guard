@@ -1,79 +1,69 @@
+"""Static lexical features for Model 1 (Table 3.5, 25 features).
+
+URLs are treated strictly as inert strings: nothing here resolves, fetches or opens a URL.
+tldextract runs fully offline on its bundled Public Suffix List snapshot.
+"""
+import ipaddress
 import math
+import re
 from collections import Counter
-from ipaddress import ip_address
-from typing import Dict
-from urllib.parse import ParseResult, urlparse
+from pathlib import Path
+from typing import Any, Dict, List
+from urllib.parse import parse_qsl, unquote, urlsplit
 
+import tldextract
 
-NUMERIC_FEATURES = [
-    "url_len",
-    "dom_len",
-    "is_ip",
-    "tld_len",
-    "subdom_cnt",
-    "letter_cnt",
-    "digit_cnt",
-    "special_cnt",
-    "eq_cnt",
-    "qm_cnt",
-    "amp_cnt",
-    "dot_cnt",
-    "dash_cnt",
-    "under_cnt",
-    "letter_ratio",
-    "digit_ratio",
-    "spec_ratio",
-    "is_https",
-    "slash_cnt",
-    "entropy",
-    "path_len",
-    "query_len",
+LISTS_DIR = Path(__file__).resolve().parent / "lists"
+
+FEATURES: List[str] = [
+    "URLLength", "HostnameLength", "PathLength", "QueryLength", "NoOfDots", "NoOfHyphens",
+    "NoOfDigits", "NoOfSlashes", "NoOfQueryParams",
+    "DigitRatio", "SpecialCharRatio", "NoOfObfuscatedChar", "HostEntropy", "PathEntropy",
+    "HasAtSymbol",
+    "IsIPHost", "SubdomainDepth", "IsSuspiciousTLD", "IsPunycode", "HasHTTPS", "HasNonStandardPort",
+    "NoOfSuspiciousKeywords", "HasBrandInSubdomainOrPath",
+    "IsShortener", "HasEmbeddedURL",
 ]
 
+# Alias for backward compatibility across existing scripts
+NUMERIC_FEATURES: List[str] = FEATURES
 
-def _safe_ratio(part: int, total: int) -> float:
-    return float(part) / float(total) if total else 0.0
-
-
-def _shannon_entropy(text: str) -> float:
-    if not text:
-        return 0.0
-    counts = Counter(text)
-    total = len(text)
-    return -sum((count / total) * math.log2(count / total) for count in counts.values())
+# Offline extractor: empty suffix_list_urls + no cache dir -> bundled snapshot only, never downloads.
+TLD_EXTRACT = tldextract.TLDExtract(
+    suffix_list_urls=(),
+    cache_dir=None,
+    include_psl_private_domains=True,
+)
 
 
-def _extract_hostname(parsed_url) -> str:
-    hostname = parsed_url.netloc or parsed_url.path
-    hostname = hostname.split("@")[(-1)]
-    hostname = hostname.split(":")[0]
-    return hostname.lower().strip(".")
+def _load(name: str) -> List[str]:
+    list_path = LISTS_DIR / name
+    if not list_path.exists():
+        return []
+    lines = list_path.read_text(encoding="utf-8").splitlines()
+    return [l.strip().lower() for l in lines if l.strip() and not l.startswith("#")]
 
 
-def _extract_tld(hostname: str) -> str:
-    if not hostname:
-        return ""
-    parts = [part for part in hostname.split(".") if part]
-    if len(parts) < 2:
-        return parts[-1] if parts else ""
-    if len(parts[-1]) == 2 and len(parts) >= 3 and len(parts[-2]) <= 3:
-        return ".".join(parts[-2:])
-    return parts[-1]
+KEYWORDS: List[str] = _load("keywords.txt")
+BRANDS: List[str] = _load("brands.txt")
+SUSPICIOUS_TLDS = set(_load("suspicious_tlds.txt"))
+SHORTENERS = set(_load("shorteners.txt"))
 
-
-def _count_subdomains(hostname: str) -> int:
-    parts = [part for part in hostname.split(".") if part]
-    if len(parts) <= 2:
-        return 0
-    return len(parts) - 2
-
-
-def _is_ip_host(hostname: str) -> int:
-    try:
-        ip_address(hostname)
-        return 1
-    except ValueError:
-        return 0
+KEYWORD_RE = re.compile(
+    "|".join(re.escape(k) for k in sorted(KEYWORDS, key=len, reverse=True)),
+    re.IGNORECASE,
+)
+# Short brands (ups, dhl, aol, irs, ...) only as whole alphanumeric tokens, to avoid "groups" -> ups.
+BRAND_RE = re.compile(
+    "|".join(
+        re.escape(b) if len(b) >= 5 else r"(?<![a-z0-9])" + re.escape(b) + r"(?![a-z0-9])"
+        for b in BRANDS
+    ),
+    re.IGNORECASE,
+)
+OBFUSCATED_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+EMBEDDED_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
+SPECIAL_CHARS = set("@~_%=&?!*,;$+")
 
 
 def normalize_url(raw_url: str) -> str:
@@ -81,56 +71,117 @@ def normalize_url(raw_url: str) -> str:
     if not url:
         return ""
     if "://" not in url:
-        url = f"http://{url}"
+        return f"http://{url}"
     return url
 
 
-def _safe_urlparse(url: str) -> ParseResult:
+def entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    n = len(s)
+    return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
+
+
+def is_ip(host: str) -> bool:
     try:
-        return urlparse(url)
+        ipaddress.ip_address(host)
+        return True
     except ValueError:
-        sanitized = url.replace("[", "%5B").replace("]", "%5D")
-        try:
-            return urlparse(sanitized)
-        except ValueError:
-            return ParseResult(scheme="http", netloc="", path=url, params="", query="", fragment="")
+        return False
 
 
-def extract_url_features(raw_url: str) -> Dict[str, float]:
-    url = normalize_url(raw_url)
-    parsed = _safe_urlparse(url)
-    hostname = _extract_hostname(parsed)
-    tld = _extract_tld(hostname)
+def registered_domain(host: str) -> str:
+    """eTLD+1 with private PSL domains; IP hosts and hosts without a known suffix use the host."""
+    if is_ip(host):
+        return host
+    ext = TLD_EXTRACT(host)
+    rd = getattr(ext, "top_domain_under_public_suffix", None) or ext.registered_domain
+    return rd or host
 
-    letter_cnt = sum(character.isalpha() for character in url)
-    digit_cnt = sum(character.isdigit() for character in url)
-    special_cnt = sum(not character.isalnum() for character in url)
+
+def extract_static_features(url: str, original_host: str = None, scheme_added: bool = False) -> Dict[str, Any]:
+    url_str = (url or "").strip()
+    has_scheme = "://" in url_str
+    parsed_target = url_str if has_scheme else f"http://{url_str}"
+
+    parts = urlsplit(parsed_target)
+    host = (parts.hostname or "").lower().strip(".")
+    path, query = parts.path or "", parts.query or ""
+    n = len(url_str)
+    digits = sum(ch.isdigit() for ch in url_str)
+    ip = is_ip(host)
+
+    if ip:
+        sub, reg = "", host
+    else:
+        ext = TLD_EXTRACT(host)
+        sub = ext.subdomain or ""
+        reg = getattr(ext, "top_domain_under_public_suffix", None) or ext.registered_domain or host
+    tld = "" if ip else host.rsplit(".", 1)[-1]
+
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+
+    # Everything outside the registered domain: subdomain labels, path, query.
+    outside = (sub + " " + path + " " + query).lower()
+    query_values = [v for _, v in parse_qsl(query, keep_blank_values=True)]
+    embedded_src = unquote(path) + " " + " ".join(unquote(v) for v in query_values)
+    orig = original_host if original_host is not None else host
+
+    host_ent = entropy(host)
+    path_ent = entropy(f"{path}?{query}" if query else path)
+    special_cnt = sum(ch in SPECIAL_CHARS for ch in url_str)
+    sub_depth = len([p for p in sub.split(".") if p]) if sub else 0
 
     features = {
-        "url": raw_url,
-        "url_len": len(url),
-        "dom": hostname,
-        "dom_len": len(hostname),
-        "is_ip": _is_ip_host(hostname),
+        "URLLength": n,
+        "HostnameLength": len(host),
+        "PathLength": len(path),
+        "QueryLength": len(query),
+        "NoOfDots": url_str.count("."),
+        "NoOfHyphens": url_str.count("-"),
+        "NoOfDigits": digits,
+        "NoOfSlashes": path.count("/"),
+        "NoOfQueryParams": len(parse_qsl(query, keep_blank_values=True)),
+        "DigitRatio": digits / n if n else 0.0,
+        "SpecialCharRatio": special_cnt / n if n else 0.0,
+        "NoOfObfuscatedChar": len(OBFUSCATED_RE.findall(url_str)),
+        "HostEntropy": host_ent,
+        "PathEntropy": path_ent,
+        "HasAtSymbol": int("@" in (parts.netloc or "") or "@" in path),
+        "IsIPHost": int(ip),
+        "SubdomainDepth": sub_depth,
+        "IsSuspiciousTLD": int(tld in SUSPICIOUS_TLDS),
+        "IsPunycode": int(any(l.startswith("xn--") for l in host.split("."))
+                          or any(ord(c) > 127 for c in orig)),
+        "HasHTTPS": int(parts.scheme.lower() == "https" and has_scheme and not scheme_added),
+        "HasNonStandardPort": int(port is not None and port not in (80, 443)),
+        "NoOfSuspiciousKeywords": len(KEYWORD_RE.findall((host + " " + path + " " + query).lower())),
+        "HasBrandInSubdomainOrPath": int(bool(BRAND_RE.search(outside))),
+        "IsShortener": int(reg in SHORTENERS or host in SHORTENERS),
+        "HasEmbeddedURL": int(bool(EMBEDDED_RE.search(embedded_src))),
+
+        # Backward-compatible convenience aliases for risk policies and heuristics
+        "url": url_str,
+        "dom": host,
         "tld": tld,
-        "tld_len": len(tld),
-        "subdom_cnt": _count_subdomains(hostname),
-        "letter_cnt": letter_cnt,
-        "digit_cnt": digit_cnt,
+        "is_https": int(parts.scheme.lower() == "https" and has_scheme and not scheme_added),
+        "subdom_cnt": sub_depth,
+        "entropy": host_ent,
+        "path_len": len(path),
+        "query_len": len(query),
+        "is_ip": int(ip),
+        "spec_ratio": special_cnt / n if n else 0.0,
         "special_cnt": special_cnt,
-        "eq_cnt": url.count("="),
-        "qm_cnt": url.count("?"),
-        "amp_cnt": url.count("&"),
-        "dot_cnt": url.count("."),
-        "dash_cnt": url.count("-"),
-        "under_cnt": url.count("_"),
-        "letter_ratio": _safe_ratio(letter_cnt, len(url)),
-        "digit_ratio": _safe_ratio(digit_cnt, len(url)),
-        "spec_ratio": _safe_ratio(special_cnt, len(url)),
-        "is_https": int(parsed.scheme.lower() == "https"),
-        "slash_cnt": url.count("/"),
-        "entropy": _shannon_entropy(url),
-        "path_len": len(parsed.path or ""),
-        "query_len": len(parsed.query or ""),
+        "digit_ratio": digits / n if n else 0.0,
+        "url_len": n,
     }
+
     return features
+
+
+def extract_url_features(url: str) -> Dict[str, Any]:
+    """Drop-in alias for extract_static_features to preserve compatibility."""
+    return extract_static_features(url)

@@ -64,9 +64,11 @@ def ensure_features(dataframe: pd.DataFrame) -> pd.DataFrame:
             "Dataset is missing required numeric feature columns and also has no 'url' column to regenerate them.",
         )
 
-    generated_features = dataframe["url"].apply(extract_url_features).apply(pd.Series)
+    print(f"Extracting {len(NUMERIC_FEATURES)} features for {len(dataframe):,} URLs...")
+    extracted_dicts = [extract_url_features(u) for u in dataframe["url"]]
+    feat_df = pd.DataFrame(extracted_dicts)
     for column in NUMERIC_FEATURES:
-        dataframe[column] = generated_features[column]
+        dataframe[column] = feat_df[column].values
     return dataframe
 
 
@@ -117,7 +119,12 @@ def main() -> None:
     print(f"Loading dataset from: {data_path}...")
     dataframe = pd.read_csv(data_path)
     if args.label_col not in dataframe.columns:
-        raise ValueError(f"Missing label column: {args.label_col}")
+        for candidate in ["Label", "label", "target", "class"]:
+            if candidate in dataframe.columns:
+                args.label_col = candidate
+                break
+        else:
+            raise ValueError(f"Missing label column: {args.label_col}")
 
     dataframe = ensure_features(dataframe.copy())
     dataframe = dataframe.dropna(subset=[args.label_col])

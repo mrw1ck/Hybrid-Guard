@@ -37,10 +37,16 @@
                         <label class="field-label" for="modeSelect">Mô Hình</label>
                         <select id="modeSelect" class="mode-select" aria-label="Chọn mode mô hình">
                             {% for mode in available_modes %}
-                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>{{ mode|upper }}</option>
+                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>
+                                {% if mode=='lgb' %}LGB (LightGBM)
+                                {% elif mode=='rf' %}RF (Random Forest)
+                                {% elif mode=='dt' %}DT (Decision Tree)
+                                {% else %}{{ mode|upper }}
+                                {% endif %}
+                            </option>
                             {% endfor %}
                         </select>
-                        <div class="field-help">LGB (LightGBM boosting), RF (Random Forest), DT (Decision Tree).</div>
+                        <div class="field-help">LGB (khuyên dùng), RF, DT.</div>
                     </div>
 
                     <div class="field">
@@ -50,22 +56,26 @@
                     </div>
                 </div>
                 <div class="form-options-row">
-                    <button id="toggleQrBtn" class="qr-trigger-btn" type="button" aria-expanded="false" aria-controls="qrScannerCard">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-                            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-                            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-                            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-                            <path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M10 7h4M10 17h4M7 10v4M17 10v4M12 12v.01"></path>
-                        </svg>
-                        <span>Quét mã QR</span>
-                        <span class="qr-badge">Quishing</span>
-                    </button>
+                    <div class="form-options-left">
+                        <button id="toggleQrBtn" class="qr-trigger-btn" type="button" aria-expanded="false" aria-controls="qrScannerCard">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                                <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                                <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                                <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                                <path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M10 7h4M10 17h4M7 10v4M17 10v4M12 12v.01"></path>
+                            </svg>
+                            <span>Quét mã QR</span>
+                            <span class="qr-badge">Quishing</span>
+                        </button>
+                    </div>
 
-                    <label class="recheck-toggle" for="recheckToggle">
-                        <input id="recheckToggle" type="checkbox">
-                        Recheck live (bỏ cache)
-                    </label>
+                    <div class="form-options-right">
+                        <label class="recheck-toggle" for="recheckToggle">
+                            <input id="recheckToggle" type="checkbox">
+                            <span>Recheck live (bỏ cache)</span>
+                        </label>
+                    </div>
                 </div>
 
                 <!-- QR Scanner Card (Quishing Detector) -->
