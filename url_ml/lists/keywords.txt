@@ -37,3 +37,4 @@ lucky
 gift
 claim
 reward
+token

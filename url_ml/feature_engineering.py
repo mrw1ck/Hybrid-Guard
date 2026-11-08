@@ -1,4 +1,4 @@
-"""Static lexical features for Model 1 (Table 3.5, 25 features).
+"""Static lexical features for Model 1 (Revised 21 features).
 
 URLs are treated strictly as inert strings: nothing here resolves, fetches or opens a URL.
 tldextract runs fully offline on its bundled Public Suffix List snapshot.
@@ -16,13 +16,27 @@ import tldextract
 LISTS_DIR = Path(__file__).resolve().parent / "lists"
 
 FEATURES: List[str] = [
-    "URLLength", "HostnameLength", "PathLength", "QueryLength", "NoOfDots", "NoOfHyphens",
-    "NoOfDigits", "NoOfSlashes", "NoOfQueryParams",
-    "DigitRatio", "SpecialCharRatio", "NoOfObfuscatedChar", "HostEntropy", "PathEntropy",
+    "NoOfTokens",
+    "HostRatio",
+    "PathRatio",
+    "NoOfDots",
+    "NoOfHyphens",
+    "NoOfDigits",
+    "NoOfSlashes",
+    "NoOfQueryParams",
+    "DigitRatio",
+    "SpecialCharRatio",
+    "NoOfObfuscatedChar",
+    "HostEntropy",
+    "PathEntropy",
     "HasAtSymbol",
-    "IsIPHost", "SubdomainDepth", "IsSuspiciousTLD", "IsPunycode", "HasHTTPS", "HasNonStandardPort",
-    "NoOfSuspiciousKeywords", "HasBrandInSubdomainOrPath",
-    "IsShortener", "HasEmbeddedURL",
+    "SubdomainRatio",
+    "IsPunycode",
+    "HasNonStandardPort",
+    "NoOfSuspiciousTokens",
+    "HasBrandInSubdomainOrPath",
+    "IsShortener",
+    "HasEmbeddedURL",
 ]
 
 # Alias for backward compatibility across existing scripts
@@ -53,6 +67,12 @@ KEYWORD_RE = re.compile(
     "|".join(re.escape(k) for k in sorted(KEYWORDS, key=len, reverse=True)),
     re.IGNORECASE,
 )
+SUSPICIOUS_TOKEN_RE = re.compile(
+    r"(?<![a-zA-Z0-9])(?:" + "|".join(re.escape(k) for k in sorted(KEYWORDS, key=len, reverse=True)) + r")(?![a-zA-Z0-9])",
+    re.IGNORECASE,
+)
+DELIM_RE = re.compile(r"[/.\-_?=&%:~+]+")
+
 # Short brands (ups, dhl, aol, irs, ...) only as whole alphanumeric tokens, to avoid "groups" -> ups.
 BRAND_RE = re.compile(
     "|".join(
@@ -135,11 +155,19 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
     special_cnt = sum(ch in SPECIAL_CHARS for ch in url_str)
     sub_depth = len([p for p in sub.split(".") if p]) if sub else 0
 
+    token_target = host + ("/" + path if path else "") + ("?" + query if query else "")
+    tokens = [t for t in DELIM_RE.split(token_target) if t]
+    no_of_tokens = len(tokens)
+    no_of_suspicious_tokens = len(SUSPICIOUS_TOKEN_RE.findall(token_target))
+
+    host_ratio = len(host) / n if n else 0.0
+    path_ratio = len(path) / n if n else 0.0
+    sub_ratio = len(sub) / len(host) if host else 0.0
+
     features = {
-        "URLLength": n,
-        "HostnameLength": len(host),
-        "PathLength": len(path),
-        "QueryLength": len(query),
+        "NoOfTokens": no_of_tokens,
+        "HostRatio": host_ratio,
+        "PathRatio": path_ratio,
         "NoOfDots": url_str.count("."),
         "NoOfHyphens": url_str.count("-"),
         "NoOfDigits": digits,
@@ -151,14 +179,11 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
         "HostEntropy": host_ent,
         "PathEntropy": path_ent,
         "HasAtSymbol": int("@" in (parts.netloc or "") or "@" in path),
-        "IsIPHost": int(ip),
-        "SubdomainDepth": sub_depth,
-        "IsSuspiciousTLD": int(tld in SUSPICIOUS_TLDS),
+        "SubdomainRatio": sub_ratio,
         "IsPunycode": int(any(l.startswith("xn--") for l in host.split("."))
                           or any(ord(c) > 127 for c in orig)),
-        "HasHTTPS": int(parts.scheme.lower() == "https" and has_scheme and not scheme_added),
         "HasNonStandardPort": int(port is not None and port not in (80, 443)),
-        "NoOfSuspiciousKeywords": len(KEYWORD_RE.findall((host + " " + path + " " + query).lower())),
+        "NoOfSuspiciousTokens": no_of_suspicious_tokens,
         "HasBrandInSubdomainOrPath": int(bool(BRAND_RE.search(outside))),
         "IsShortener": int(reg in SHORTENERS or host in SHORTENERS),
         "HasEmbeddedURL": int(bool(EMBEDDED_RE.search(embedded_src))),
@@ -177,6 +202,16 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
         "special_cnt": special_cnt,
         "digit_ratio": digits / n if n else 0.0,
         "url_len": n,
+        # Legacy feature names kept as aliases if accessed anywhere
+        "URLLength": n,
+        "HostnameLength": len(host),
+        "PathLength": len(path),
+        "QueryLength": len(query),
+        "SubdomainDepth": sub_depth,
+        "NoOfSuspiciousKeywords": len(KEYWORD_RE.findall((host + " " + path + " " + query).lower())),
+        "IsIPHost": int(ip),
+        "HasHTTPS": int(parts.scheme.lower() == "https" and has_scheme and not scheme_added),
+        "IsSuspiciousTLD": int(tld in SUSPICIOUS_TLDS),
     }
 
     return features
