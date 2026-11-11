@@ -1,4 +1,4 @@
-"""Static lexical features for Model 1 (Revised 21 features).
+"""Static lexical features for Model 1 (Revised 19 features).
 
 URLs are treated strictly as inert strings: nothing here resolves, fetches or opens a URL.
 tldextract runs fully offline on its bundled Public Suffix List snapshot.
@@ -16,7 +16,6 @@ import tldextract
 LISTS_DIR = Path(__file__).resolve().parent / "lists"
 
 FEATURES: List[str] = [
-    "NoOfTokens",
     "HostRatio",
     "PathRatio",
     "NoOfDots",
@@ -33,7 +32,6 @@ FEATURES: List[str] = [
     "SubdomainRatio",
     "IsPunycode",
     "HasNonStandardPort",
-    "NoOfSuspiciousTokens",
     "HasBrandInSubdomainOrPath",
     "IsShortener",
     "HasEmbeddedURL",
@@ -155,17 +153,11 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
     special_cnt = sum(ch in SPECIAL_CHARS for ch in url_str)
     sub_depth = len([p for p in sub.split(".") if p]) if sub else 0
 
-    token_target = host + ("/" + path if path else "") + ("?" + query if query else "")
-    tokens = [t for t in DELIM_RE.split(token_target) if t]
-    no_of_tokens = len(tokens)
-    no_of_suspicious_tokens = len(SUSPICIOUS_TOKEN_RE.findall(token_target))
-
     host_ratio = len(host) / n if n else 0.0
     path_ratio = len(path) / n if n else 0.0
     sub_ratio = len(sub) / len(host) if host else 0.0
 
     features = {
-        "NoOfTokens": no_of_tokens,
         "HostRatio": host_ratio,
         "PathRatio": path_ratio,
         "NoOfDots": url_str.count("."),
@@ -183,7 +175,6 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
         "IsPunycode": int(any(l.startswith("xn--") for l in host.split("."))
                           or any(ord(c) > 127 for c in orig)),
         "HasNonStandardPort": int(port is not None and port not in (80, 443)),
-        "NoOfSuspiciousTokens": no_of_suspicious_tokens,
         "HasBrandInSubdomainOrPath": int(bool(BRAND_RE.search(outside))),
         "IsShortener": int(reg in SHORTENERS or host in SHORTENERS),
         "HasEmbeddedURL": int(bool(EMBEDDED_RE.search(embedded_src))),
