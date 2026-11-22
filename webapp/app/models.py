@@ -7,6 +7,13 @@ class AnalyzeRequest(BaseModel):
     url: str = Field(..., min_length=1)
     mode: str | None = Field(default=None, description="Model mode: rf, dt, dl")
     recheck: bool = Field(default=False, description="Bypass cached external checks and re-fetch live data")
+    qr_metadata: dict[str, Any] | None = Field(default=None, description="Optional metadata extracted from QR code")
+
+
+class AnalyzeQrRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64 encoded QR image or data URL")
+    mode: str | None = Field(default=None, description="Model mode: rf, dt, dl")
+    recheck: bool = Field(default=False, description="Bypass cached external checks")
 
 
 class AnalyzeResponse(BaseModel):
@@ -26,3 +33,4 @@ class AnalyzeResponse(BaseModel):
     fusion_reasons: list[str]
     checks: dict[str, Any]
     policy: dict[str, Any]
+    qr_metadata: dict[str, Any] | None = None

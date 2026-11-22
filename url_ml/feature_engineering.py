@@ -1,21 +1,22 @@
-"""Static lexical features for Model 1 (Revised 19 features).
+"""Combined Static URL + QR Metadata features for Hybrid-Guard (Approach 1: 33 features).
 
-URLs are treated strictly as inert strings: nothing here resolves, fetches or opens a URL.
-tldextract runs fully offline on its bundled Public Suffix List snapshot.
+Features comprise:
+- 19 static lexical URL features
+- 14 structural & protocol-level QR metadata features
 """
 import ipaddress
 import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 import tldextract
 
 LISTS_DIR = Path(__file__).resolve().parent / "lists"
 
-FEATURES: List[str] = [
+URL_FEATURES: List[str] = [
     "HostRatio",
     "PathRatio",
     "NoOfDots",
@@ -36,6 +37,43 @@ FEATURES: List[str] = [
     "IsShortener",
     "HasEmbeddedURL",
 ]
+
+QR_FEATURES: List[str] = [
+    "QRVersion",
+    "QRDimension",
+    "QRTotalModules",
+    "QRBlackModules",
+    "QRWhiteModules",
+    "QRDotDensity",
+    "QRECCLevel",
+    "QRDataMask",
+    "QRUnusedECC",
+    "QRPayloadLength",
+    "QRCapacityRatio",
+    "QRModulePixelSize",
+    "QRImageAspectRatio",
+    "HasValidQR",
+]
+
+DEFAULT_QR_METADATA: Dict[str, float] = {
+    "QRVersion": 3.0,
+    "QRDimension": 29.0,
+    "QRTotalModules": 841.0,
+    "QRBlackModules": 424.0,
+    "QRWhiteModules": 406.0,
+    "QRDotDensity": 0.513,
+    "QRECCLevel": 0.0,
+    "QRDataMask": 3.0,
+    "QRUnusedECC": 1.0,
+    "QRPayloadLength": 0.0,
+    "QRCapacityRatio": 0.048,
+    "QRModulePixelSize": 6.0,
+    "QRImageAspectRatio": 1.0,
+    "HasValidQR": 0.0,
+}
+
+# Full combined 33 features
+FEATURES: List[str] = URL_FEATURES + QR_FEATURES
 
 # Alias for backward compatibility across existing scripts
 NUMERIC_FEATURES: List[str] = FEATURES
@@ -117,7 +155,12 @@ def registered_domain(host: str) -> str:
     return rd or host
 
 
-def extract_static_features(url: str, original_host: str = None, scheme_added: bool = False) -> Dict[str, Any]:
+def extract_static_features(
+    url: str,
+    original_host: str = None,
+    scheme_added: bool = False,
+    qr_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     url_str = (url or "").strip()
     has_scheme = "://" in url_str
     parsed_target = url_str if has_scheme else f"http://{url_str}"
@@ -178,8 +221,19 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
         "HasBrandInSubdomainOrPath": int(bool(BRAND_RE.search(outside))),
         "IsShortener": int(reg in SHORTENERS or host in SHORTENERS),
         "HasEmbeddedURL": int(bool(EMBEDDED_RE.search(embedded_src))),
+    }
 
-        # Backward-compatible convenience aliases for risk policies and heuristics
+    # QR metadata features (Approach 1: Combined features)
+    qr_dict = dict(DEFAULT_QR_METADATA)
+    qr_dict["QRPayloadLength"] = float(n)
+    if qr_metadata:
+        for k in QR_FEATURES:
+            if k in qr_metadata:
+                qr_dict[k] = float(qr_metadata[k])
+    features.update(qr_dict)
+
+    # Backward-compatible convenience aliases for risk policies and heuristics
+    features.update({
         "url": url_str,
         "dom": host,
         "tld": tld,
@@ -203,11 +257,11 @@ def extract_static_features(url: str, original_host: str = None, scheme_added: b
         "IsIPHost": int(ip),
         "HasHTTPS": int(parts.scheme.lower() == "https" and has_scheme and not scheme_added),
         "IsSuspiciousTLD": int(tld in SUSPICIOUS_TLDS),
-    }
+    })
 
     return features
 
 
-def extract_url_features(url: str) -> Dict[str, Any]:
+def extract_url_features(url: str, qr_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Drop-in alias for extract_static_features to preserve compatibility."""
-    return extract_static_features(url)
+    return extract_static_features(url, qr_metadata=qr_metadata)

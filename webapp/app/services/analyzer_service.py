@@ -33,10 +33,12 @@ class UrlAnalyzerService:
         self.model_service = model_service
         self.cache = cache_store
 
-    def analyze(self, raw_url: str, recheck: bool = False) -> dict:
+    def analyze(self, raw_url: str, qr_metadata: dict | None = None, recheck: bool = False) -> dict:
         scheme_missing = "://" not in (raw_url or "")
         canonical_input = _canonicalize_root_url(raw_url)
-        features, predicted_class, base_probability = self.model_service.predict(canonical_input)
+        features, predicted_class, base_probability = self.model_service.predict(
+            canonical_input, qr_metadata=qr_metadata
+        )
         normalized_url = normalize_url(canonical_input)
         parsed = urlparse(normalized_url)
         hostname = (parsed.hostname or "").lower()
@@ -147,4 +149,5 @@ class UrlAnalyzerService:
                 "inferred_https": inferred_https,
                 "recheck": recheck,
             },
+            "qr_metadata": qr_metadata,
         }

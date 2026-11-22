@@ -40,13 +40,14 @@
                             <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>
                                 {% if mode=='lgb' %}LGB (LightGBM)
                                 {% elif mode=='rf' %}RF (Random Forest)
+                                {% elif mode=='xgb' %}XGB (XGBoost)
                                 {% elif mode=='dt' %}DT (Decision Tree)
                                 {% else %}{{ mode|upper }}
                                 {% endif %}
                             </option>
                             {% endfor %}
                         </select>
-                        <div class="field-help">LGB (khuyên dùng), RF, DT.</div>
+                        <div class="field-help">LGB (khuyên dùng), RF, XGB.</div>
                     </div>
 
                     <div class="field">
@@ -524,6 +525,118 @@
             });
         }
 
+        function renderAnalysisData(data) {
+            resultPanel.classList.remove("hidden");
+            document.getElementById("riskTier").textContent = data.risk_tier;
+            document.getElementById("riskTier").className = "value tier-" + data.final_prediction;
+            document.getElementById("finalPercent").textContent = pct(data.final_malicious_probability);
+            document.getElementById("basePercent").textContent = pct(data.base_malicious_probability);
+            document.getElementById("tldPolicy").textContent = `${safe(data.policy.tld_policy)} (.${safe(data.policy.tld)})`;
+
+            const summaryRows = [
+                ["URL đầu vào", data.url, "URL mà người dùng gửi để phân tích."],
+                ["URL chuẩn hóa", data.normalized_url, "Dạng URL đã được chuẩn hóa để phân tích và gọi external checks."],
+                ["Mode", (data.mode || "N/A").toUpperCase(), "Mode mô hình người dùng đã chọn trên UI."],
+                ["Model type", (data.model_type || "N/A").toUpperCase(), "Loại model backend đang dùng thực tế cho mode này."],
+                ["Recheck live", vnBool(data.policy?.recheck), "Nếu Có: bỏ qua cache và truy vấn lại DNS/SSL/RDAP/HTTP."],
+                ["Dự đoán từ AI", data.model_prediction, "Kết quả dự đoán trực tiếp từ mô hình học máy."],
+                ["Dự đoán cuối", data.final_prediction, "Kết quả sau khi kết hợp AI và các kiểm tra kỹ thuật."],
+                ["Delta hợp nhất", formatDelta(data.base_malicious_probability, data.final_malicious_probability), "Độ thay đổi xác suất sau khi áp dụng policy + external checks."],
+                ["Số lý do hợp nhất", (data.fusion_reasons || []).length, "Số lý do backend trả về để giải thích việc điều chỉnh."],
+                ["Full checks", vnBool(data.policy?.full_checks), "Cho biết pipeline có chạy đầy đủ domain age + HTTP checks hay không."],
+                ["Risk triggers", (data.risk_triggers || []).join(" | ") || "Không có", "Các tín hiệu kích hoạt kiểm tra sâu."],
+                ["Ngưỡng Suspicious", data.thresholds.suspicious, "Nếu xác suất >= ngưỡng này thì xếp nghi ngờ."],
+                ["Ngưỡng Malicious", data.thresholds.malicious, "Nếu xác suất >= ngưỡng này thì xếp độc hại."],
+            ];
+
+            if (data.qr_metadata && data.qr_metadata.HasValidQR) {
+                const qm = data.qr_metadata;
+                summaryRows.push(
+                    ["Mã QR", `Hợp lệ (Version ${qm.QRVersion || 1}, ECC: ${qm.ec_level_str || qm.QRECCLevel || 'L'})`, "Mô hình nhận diện ảnh QR và trích xuất metadata."],
+                    ["Mật độ Module QR", `${((qm.QRDotDensity || 0) * 100).toFixed(1)}% (${qm.QRBlackModules || 0} đen / ${qm.QRTotalModules || 0} ô)`, "Tỉ lệ phân bố điểm đen/trắng của mã QR."],
+                    ["Dung lượng & Nén", `${qm.QRPayloadLength || 0} ký tự (Tỷ lệ tải: ${((qm.QRCapacityRatio || 0) * 100).toFixed(1)}%)`, "Độ dài URL so với dung lượng lưu trữ của phiên bản QR."]
+                );
+            }
+
+            setRows("summaryBody", summaryRows);
+
+            const dns = data.checks.dns || {};
+            const ssl = data.checks.ssl || {};
+            setRows("domainChecksBody", [
+                ["DNS resolve", vnBool(dns.resolved), "Domain có phân giải ra IP hay không."],
+                ["IP", (dns.ips || []).join(", ") || "N/A", "Danh sách IP thu được từ DNS lookup."],
+                ["Công cụ DNS", dns.tool, "Công cụ hệ thống đã dùng để truy vấn DNS."],
+                ["DNS từ cache", vnBool(dns.from_cache), "Kết quả DNS lấy từ cache hay truy vấn mới."],
+                ["SSL khả dụng", vnBool(ssl.available), "Website có SSL hợp lệ hay không."],
+                ["SSL issuer", ssl.issuer, "Tổ chức cấp chứng chỉ SSL."],
+                ["Hạn SSL", ssl.not_after, "Thời điểm chứng chỉ SSL hết hạn."],
+                ["Số ngày còn lại", ssl.days_until_expiration, "Số ngày còn lại trước khi SSL hết hạn."],
+                ["SSL từ cache", vnBool(ssl.from_cache), "Kết quả SSL lấy từ cache hay truy vấn mới."],
+                ["Lỗi SSL", ssl.error, "Lỗi khi kiểm tra SSL (nếu có)."],
+            ]);
+
+            const age = data.checks.domain_age || {};
+            const http = data.checks.http || {};
+            setRows("ageContentBody", [
+                ["Ngày đăng ký", age.registered_at, "Thời điểm domain được đăng ký."],
+                ["Tuổi domain (ngày)", age.days_since_registration, "Số ngày tồn tại của domain."],
+                ["Ngày hết hạn", age.expires_at, "Thời điểm domain hết hạn."],
+                ["Nguồn tuổi domain", age.source, "Nguồn dữ liệu RDAP dùng để tra cứu tuổi domain."],
+                ["Domain age từ cache", vnBool(age.from_cache), "Kết quả tuổi domain lấy từ cache hay truy vấn mới."],
+                ["Lỗi tuổi domain", age.error, "Lỗi khi truy vấn RDAP (nếu có)."],
+                ["HTTP status", http.status_code, "Mã phản hồi HTTP của trang."],
+                ["Redirect hops", http.redirect_hops, "Số lần chuyển hướng khi truy cập URL."],
+                ["Từ khóa nhạy cảm", (http.keyword_hits || []).join(", ") || "Không có", "Các từ khóa nhạy cảm phát hiện trong nội dung."],
+                ["Form mật khẩu", vnBool(http.password_form_detected), "Trang có xuất hiện input password hay không."],
+                ["HTTP từ cache", vnBool(http.from_cache), "Kết quả HTTP/content lấy từ cache hay truy vấn mới."],
+                ["Lỗi HTTP", http.error, "Lỗi khi thu thập thông tin HTTP/content."],
+            ]);
+
+            const fBody = document.getElementById("featureBody");
+            fBody.innerHTML = (data.top_debug_features || []).map(f =>
+                `<tr><td>${safe(f.feature)}</td><td>${Number(f.value).toFixed(4)}</td><td>${Number(f.importance).toFixed(4)}</td><td>${Number(f.debug_score).toFixed(4)}</td></tr>`
+            ).join("");
+
+            renderFusionReasons(data);
+            updateChart(data);
+        }
+
+        async function analyzeQrDirect(file) {
+            const mode = modeSelect ? modeSelect.value : "lgb";
+            const recheck = Boolean(recheckToggle?.checked);
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = "Đang phân tích QR...";
+            errorBox.classList.add("hidden");
+
+            try {
+                const b64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                const response = await fetch("/api/analyze-qr", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image_base64: b64, mode, recheck })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || "Không thể phân tích mã QR");
+
+                urlInput.value = data.url;
+                renderAnalysisData(data);
+                showToast("Đã phân tích mã QR kết hợp URL thành công!");
+                resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            } catch (err) {
+                errorBox.textContent = err.message || "Lỗi khi phân tích mã QR";
+                errorBox.classList.remove("hidden");
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = "Phân tích";
+            }
+        }
+
         analyzeBtn.addEventListener("click", async () => {
             const url = urlInput.value.trim();
             const mode = modeSelect.value;
@@ -548,68 +661,7 @@
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.detail || "Không thể phân tích URL");
 
-                resultPanel.classList.remove("hidden");
-                document.getElementById("riskTier").textContent = data.risk_tier;
-                document.getElementById("riskTier").className = "value tier-" + data.final_prediction;
-                document.getElementById("finalPercent").textContent = pct(data.final_malicious_probability);
-                document.getElementById("basePercent").textContent = pct(data.base_malicious_probability);
-                document.getElementById("tldPolicy").textContent = `${safe(data.policy.tld_policy)} (.${safe(data.policy.tld)})`;
-
-                setRows("summaryBody", [
-                    ["URL đầu vào", data.url, "URL mà người dùng gửi để phân tích."],
-                    ["URL chuẩn hóa", data.normalized_url, "Dạng URL đã được chuẩn hóa để phân tích và gọi external checks."],
-                    ["Mode", (data.mode || "N/A").toUpperCase(), "Mode mô hình người dùng đã chọn trên UI."],
-                    ["Model type", (data.model_type || "N/A").toUpperCase(), "Loại model backend đang dùng thực tế cho mode này."],
-                    ["Recheck live", vnBool(data.policy?.recheck), "Nếu Có: bỏ qua cache và truy vấn lại DNS/SSL/RDAP/HTTP."],
-                    ["Dự đoán từ AI", data.model_prediction, "Kết quả dự đoán trực tiếp từ mô hình học máy."],
-                    ["Dự đoán cuối", data.final_prediction, "Kết quả sau khi kết hợp AI và các kiểm tra kỹ thuật."],
-                    ["Delta hợp nhất", formatDelta(data.base_malicious_probability, data.final_malicious_probability), "Độ thay đổi xác suất sau khi áp dụng policy + external checks."],
-                    ["Số lý do hợp nhất", (data.fusion_reasons || []).length, "Số lý do backend trả về để giải thích việc điều chỉnh."],
-                    ["Full checks", vnBool(data.policy?.full_checks), "Cho biết pipeline có chạy đầy đủ domain age + HTTP checks hay không."],
-                    ["Risk triggers", (data.risk_triggers || []).join(" | ") || "Không có", "Các tín hiệu kích hoạt kiểm tra sâu."],
-                    ["Ngưỡng Suspicious", data.thresholds.suspicious, "Nếu xác suất >= ngưỡng này thì xếp nghi ngờ."],
-                    ["Ngưỡng Malicious", data.thresholds.malicious, "Nếu xác suất >= ngưỡng này thì xếp độc hại."],
-                ]);
-
-                const dns = data.checks.dns || {};
-                const ssl = data.checks.ssl || {};
-                setRows("domainChecksBody", [
-                    ["DNS resolve", vnBool(dns.resolved), "Domain có phân giải ra IP hay không."],
-                    ["IP", (dns.ips || []).join(", ") || "N/A", "Danh sách IP thu được từ DNS lookup."],
-                    ["Công cụ DNS", dns.tool, "Công cụ hệ thống đã dùng để truy vấn DNS."],
-                    ["DNS từ cache", vnBool(dns.from_cache), "Kết quả DNS lấy từ cache hay truy vấn mới."],
-                    ["SSL khả dụng", vnBool(ssl.available), "Website có SSL hợp lệ hay không."],
-                    ["SSL issuer", ssl.issuer, "Tổ chức cấp chứng chỉ SSL."],
-                    ["Hạn SSL", ssl.not_after, "Thời điểm chứng chỉ SSL hết hạn."],
-                    ["Số ngày còn lại", ssl.days_until_expiration, "Số ngày còn lại trước khi SSL hết hạn."],
-                    ["SSL từ cache", vnBool(ssl.from_cache), "Kết quả SSL lấy từ cache hay truy vấn mới."],
-                    ["Lỗi SSL", ssl.error, "Lỗi khi kiểm tra SSL (nếu có)."],
-                ]);
-
-                const age = data.checks.domain_age || {};
-                const http = data.checks.http || {};
-                setRows("ageContentBody", [
-                    ["Ngày đăng ký", age.registered_at, "Thời điểm domain được đăng ký."],
-                    ["Tuổi domain (ngày)", age.days_since_registration, "Số ngày tồn tại của domain."],
-                    ["Ngày hết hạn", age.expires_at, "Thời điểm domain hết hạn."],
-                    ["Nguồn tuổi domain", age.source, "Nguồn dữ liệu RDAP dùng để tra cứu tuổi domain."],
-                    ["Domain age từ cache", vnBool(age.from_cache), "Kết quả tuổi domain lấy từ cache hay truy vấn mới."],
-                    ["Lỗi tuổi domain", age.error, "Lỗi khi truy vấn RDAP (nếu có)."],
-                    ["HTTP status", http.status_code, "Mã phản hồi HTTP của trang."],
-                    ["Redirect hops", http.redirect_hops, "Số lần chuyển hướng khi truy cập URL."],
-                    ["Từ khóa nhạy cảm", (http.keyword_hits || []).join(", ") || "Không có", "Các từ khóa nhạy cảm phát hiện trong nội dung."],
-                    ["Form mật khẩu", vnBool(http.password_form_detected), "Trang có xuất hiện input password hay không."],
-                    ["HTTP từ cache", vnBool(http.from_cache), "Kết quả HTTP/content lấy từ cache hay truy vấn mới."],
-                    ["Lỗi HTTP", http.error, "Lỗi khi thu thập thông tin HTTP/content."],
-                ]);
-
-                const fBody = document.getElementById("featureBody");
-                fBody.innerHTML = (data.top_debug_features || []).map(f =>
-                    `<tr><td>${safe(f.feature)}</td><td>${Number(f.value).toFixed(4)}</td><td>${Number(f.importance).toFixed(4)}</td><td>${Number(f.debug_score).toFixed(4)}</td></tr>`
-                ).join("");
-
-                renderFusionReasons(data);
-                updateChart(data);
+                renderAnalysisData(data);
             } catch (err) {
                 errorBox.textContent = err.message;
                 errorBox.classList.remove("hidden");
@@ -882,8 +934,11 @@
             qrResultBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
 
+        let lastUploadedQrFile = null;
+
         async function scanImageFile(file) {
             if (!file) return;
+            lastUploadedQrFile = file;
             const scanner = getQrScannerInstance();
             if (!scanner) {
                 showToast("Thư viện quét mã QR chưa sẵn sàng. Vui lòng tải lại trang.");
@@ -1004,6 +1059,11 @@
         });
 
         qrAnalyzeBtn.addEventListener("click", () => {
+            if (lastUploadedQrFile) {
+                showToast("Đang phân tích trực tiếp metadata QR và URL...");
+                analyzeQrDirect(lastUploadedQrFile);
+                return;
+            }
             if (!lastDecodedText) return;
             urlInput.value = lastDecodedText;
             showToast("Đang kích hoạt phân tích rủi ro URL...");
@@ -1013,6 +1073,7 @@
 
         qrResetBtn.addEventListener("click", () => {
             lastDecodedText = "";
+            lastUploadedQrFile = null;
             qrResultBox.classList.add("hidden");
             if (qrTabCamera.classList.contains("active") && !isCameraRunning) {
                 startCamera();

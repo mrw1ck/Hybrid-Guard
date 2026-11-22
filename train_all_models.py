@@ -3,7 +3,7 @@
 
 - LGB (LightGBM Gradient Boosting)
 - RF (Random Forest)
-- DT (Decision Tree)
+- XGB (XGBoost Extreme Gradient Boosting)
 """
 
 import argparse
@@ -47,13 +47,15 @@ MODELS_CONFIG = [
         ],
     },
     {
-        "name": "dt",
-        "display": "Decision Tree (DT)",
-        "output_dir": "artifacts/dt_final",
+        "name": "xgb",
+        "display": "XGBoost (Extreme Gradient Boosting)",
+        "output_dir": "artifacts/xgb_final",
         "cmd": [
-            "--model", "dt",
-            "--max-depth", "20",
-            "--output-dir", "artifacts/dt_final",
+            "--model", "xgb",
+            "--n-estimators", "300",
+            "--learning-rate", "0.05",
+            "--max-depth", "8",
+            "--output-dir", "artifacts/xgb_final",
         ],
     },
 ]
@@ -61,15 +63,15 @@ MODELS_CONFIG = [
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train and benchmark models in Hybrid-Guard (LGB, RF, DT).",
+        description="Train and benchmark models in Hybrid-Guard (LGB, RF, XGB).",
     )
     parser.add_argument("--data", default="Dataset.csv", help="Path to the dataset CSV.")
     parser.add_argument(
         "--models",
         nargs="+",
-        default=["lgb", "rf", "dt"],
-        choices=["lgb", "rf", "dt"],
-        help="List of models to run (default: lgb rf dt).",
+        default=["lgb", "rf", "xgb"],
+        choices=["lgb", "rf", "xgb", "dt"],
+        help="List of models to run (default: lgb rf xgb).",
     )
     parser.add_argument(
         "--skip-existing",

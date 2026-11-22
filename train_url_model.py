@@ -22,8 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default="lgb",
-        choices=["lgb", "rf", "dt"],
-        help="Model type: lgb = LightGBM (Gradient Boosting), rf = Random Forest, dt = Decision Tree.",
+        choices=["lgb", "rf", "xgb", "dt"],
+        help="Model type: lgb = LightGBM, rf = Random Forest, xgb = XGBoost, dt = Decision Tree.",
     )
     parser.add_argument("--label-col", default="label", help="Target label column.")
     parser.add_argument("--test-size", type=float, default=0.2, help="Test split ratio.")
@@ -92,6 +92,18 @@ def build_model(args: argparse.Namespace):
             random_state=args.random_state,
             class_weight="balanced",
             n_jobs=-1,
+        )
+
+    if args.model == "xgb":
+        from xgboost import XGBClassifier
+        return XGBClassifier(
+            n_estimators=args.n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.max_depth if args.max_depth is not None else 8,
+            random_state=args.random_state,
+            n_jobs=-1,
+            eval_metric="logloss",
+            tree_method="hist",
         )
 
     if args.model == "dt":
