@@ -1,0 +1,21 @@
+| feature                   |   mean_abs_shap |
+|:--------------------------|----------------:|
+| PathRatio                 |     1.42588     |
+| NoOfDots                  |     0.844052    |
+| PathEntropy               |     0.78419     |
+| NoOfDigits                |     0.552044    |
+| DigitRatio                |     0.504424    |
+| SubdomainRatio            |     0.430603    |
+| NoOfSlashes               |     0.404125    |
+| NoOfHyphens               |     0.392726    |
+| HasNonStandardPort        |     0.36785     |
+| SpecialCharRatio          |     0.320373    |
+| HostRatio                 |     0.318506    |
+| HostEntropy               |     0.275931    |
+| HasBrandInSubdomainOrPath |     0.19298     |
+| NoOfQueryParams           |     0.0902081   |
+| HasEmbeddedURL            |     0.0100078   |
+| IsShortener               |     0.00883252  |
+| HasAtSymbol               |     0.00286442  |
+| IsPunycode                |     0.000522908 |
+| NoOfObfuscatedChar        |     8.37987e-05 |
