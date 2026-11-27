@@ -46,7 +46,13 @@ class UrlAnalyzerService:
         trusted_tld = is_trusted_tld(tld)
         risky_tld = is_risky_tld(tld)
 
-        low_confidence = abs(base_probability - 0.5) < UNCERTAIN_THRESHOLD
+        # Frozen thresholds of the thesis models; legacy artifacts fall back to the configured constants.
+        thr = getattr(self.model_service, "thresholds", None) or {"malicious": MALICIOUS_THRESHOLD, "suspicious": SUSPICIOUS_THRESHOLD}
+        mal_thr, sus_thr = float(thr["malicious"]), float(thr["suspicious"])
+        if getattr(self.model_service, "thresholds", None):
+            low_confidence = sus_thr < base_probability < mal_thr          # the Suspicious band is the uncertain band
+        else:
+            low_confidence = abs(base_probability - 0.5) < UNCERTAIN_THRESHOLD
         medium_risk_non_trusted = (not trusted_tld) and base_probability >= 0.10
         full_checks = risky_tld or bool(triggers) or low_confidence or medium_risk_non_trusted
 
@@ -115,7 +121,10 @@ class UrlAnalyzerService:
                 "Không thấy scheme trong URL đầu vào; hệ thống đã tự kiểm tra HTTPS và phát hiện kết nối an toàn.",
             ] + guardrail_reasons
         fusion_reasons = guardrail_reasons + fusion_reasons
-        final_prediction = classify_probability(final_probability, MALICIOUS_THRESHOLD, SUSPICIOUS_THRESHOLD)
+        final_prediction = classify_probability(final_probability, mal_thr, sus_thr)
+        if final_prediction == "benign" and features.get("hard_url"):
+            final_prediction = "suspicious"                                 # shorteners / embedded URLs are never Safe
+            fusion_reasons = ["URL rút gọn hoặc nhúng URL khác: không bao giờ được xếp mức an toàn (quy tắc Mục 3.5.3)."] + fusion_reasons
 
         self.cache.save()
 
@@ -128,8 +137,8 @@ class UrlAnalyzerService:
             "final_malicious_probability": final_probability,
             "risk_tier": final_prediction.upper(),
             "thresholds": {
-                "malicious": MALICIOUS_THRESHOLD,
-                "suspicious": SUSPICIOUS_THRESHOLD,
+                "malicious": mal_thr,
+                "suspicious": sus_thr,
             },
             "risk_triggers": triggers,
             "top_debug_features": self.model_service.rank_features(features, top_k=8),

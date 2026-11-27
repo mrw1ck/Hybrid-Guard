@@ -10,33 +10,29 @@ def _first_existing(*paths: Path) -> Path:
     return paths[0]
 
 
-LGB_MODEL_PATH = _first_existing(
-    ARTIFACTS_DIR / "lgb_final" / "url_phishing_model.joblib",
-    ARTIFACTS_DIR / "lgb_model" / "url_phishing_model.joblib",
-)
-RF_MODEL_PATH = _first_existing(
-    ARTIFACTS_DIR / "rf_final" / "url_phishing_model.joblib",
-    ARTIFACTS_DIR / "url_phishing_model.joblib",
-)
-DT_MODEL_PATH = _first_existing(
-    ARTIFACTS_DIR / "dt_final" / "url_phishing_model.joblib",
-    ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib",
-)
-MODEL_PATH = LGB_MODEL_PATH
+# Chapter-3 models: grouped 5-fold CV, 50 Optuna trials, isotonic calibration, frozen tau_high/tau_low.
+THESIS_MODEL_PATHS = {
+    "lgb": ARTIFACTS_DIR / "lgb_thesis" / "url_phishing_model.joblib",
+    "xgb": ARTIFACTS_DIR / "xgb_thesis" / "url_phishing_model.joblib",
+    "rf": ARTIFACTS_DIR / "rf_thesis" / "url_phishing_model.joblib",
+}
+# Legacy artifacts (22 features, uncalibrated, trained on a random URL-level split). Only used if no thesis artifact exists.
+LEGACY_MODEL_PATHS = {
+    "lgb": _first_existing(ARTIFACTS_DIR / "lgb_final" / "url_phishing_model.joblib", ARTIFACTS_DIR / "lgb_model" / "url_phishing_model.joblib"),
+    "rf": _first_existing(ARTIFACTS_DIR / "rf_final" / "url_phishing_model.joblib", ARTIFACTS_DIR / "url_phishing_model.joblib"),
+}
+MODEL_PATHS = {m: p for m, p in THESIS_MODEL_PATHS.items() if p.exists()} or {m: p for m, p in LEGACY_MODEL_PATHS.items() if p.exists()}
+MODEL_PATH = next(iter(MODEL_PATHS.values()), None)
 CACHE_PATH = ARTIFACTS_DIR / "web_external_cache.json"
 
-MODEL_PATHS = {
-    "lgb": LGB_MODEL_PATH,
-    "rf": RF_MODEL_PATH,
-    "dt": DT_MODEL_PATH,
-}
-
+# Best model by cross-validated PR-AUC (Chapter-3 protocol); the three models are statistically tied on the test set.
 DEFAULT_MODEL_MODE = "lgb"
 
 DEFAULT_TIMEOUT_SECONDS = 8
 DEFAULT_CACHE_HOURS = 24
 DEFAULT_MAX_CONTENT_BYTES = 4096
 
+# Fallback thresholds for legacy (uncalibrated) artifacts only. Thesis models carry their own frozen tau_high / tau_low.
 MALICIOUS_THRESHOLD = 0.5
 SUSPICIOUS_THRESHOLD = 0.35
 UNCERTAIN_THRESHOLD = 0.18

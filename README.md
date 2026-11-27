@@ -4,10 +4,7 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
 
 ## Main Features
 
-- Multi-model support:
-  - LGB (LightGBM: Gradient Boosted Decision Trees - fast, high accuracy on large datasets)
-  - RF (Random Forest)
-  - DT (Decision Tree)
+- Multi-model support (calibrated thesis models, equivalent on the test set, see report): LGB (LightGBM), XGB (XGBoost), RF (Random Forest)
 - Hybrid risk scoring pipeline:
   - Base model probability
   - Policy/risk adjustment
@@ -36,61 +33,43 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Training
+## Dataset
 
-### Train LightGBM (LGB) - Recommended
+`Dataset_Hybrid.csv` (650,770 URLs, 43 columns): 19 URL features, identifier/partition/label columns and 14 QR columns
+(12 non-constant). `partition` assigns every registered domain wholly to `train` (520,616) or `test` (130,154).
+The shipped models use only the 19 URL features (`FEATURES` in `train_rf_thesis.py`); the QR columns are evaluated in experiment E8.
 
-```bash
-# Cách 1: Chạy script bash / bat riêng
-# Trên Windows:
-train_lgb_model.bat
-# Hoặc trên Linux / Git Bash:
-bash train_lgb_model.sh
+## Training (thesis protocol)
 
-# Cách 2: Chạy script Python riêng
-python train_lgb_model.py --data Dataset.csv
-
-# Cách 3: Chạy qua train_url_model
-python train_url_model.py --data Dataset.csv --model lgb --output-dir artifacts/lgb_final
-```
-
-### Train RF (Random Forest)
+Grouped 5-fold CV, Optuna TPE (50 trials, no pruner), isotonic calibration on OOF predictions, frozen thresholds, single test pass.
 
 ```bash
-python train_url_model.py --data Dataset.csv --model rf --output-dir artifacts/rf_final
+python train_rf_thesis.py --data Dataset_Hybrid.csv --output-dir artifacts/rf_thesis
+python train_boost_thesis.py --model lgb --data Dataset_Hybrid.csv --output-dir artifacts/lgb_thesis
+python train_boost_thesis.py --model xgb --data Dataset_Hybrid.csv --output-dir artifacts/xgb_thesis
+python boost_extras.py lgb 20 5000      # report tables R1-R13 / figures (lgb or xgb)
 ```
 
-### Train DT (Decision Tree)
+Experiments: `ablation_e2.py` (E2), `e4_collect.py` + `e4_analyze.py` (E4), `e6_robustness.py` (E6), `e7_features25.py` (E7),
+`e8_qr_vs_url.py` + `e8b_len_check.py` (E8: Random Forest on URL only / QR only / URL+QR, plus baselines),
+`compare_models_thesis.py` (pairwise tests).
 
-```bash
-python train_url_model.py --data Dataset.csv --model dt --max-depth 10 --output-dir artifacts/dt_final
-```
-
-### Train All Models (LGB, RF, DT) & Compare Benchmark
-
-```bash
-# Trên Windows:
-train_all_models.bat
-
-# Hoặc trên Linux / Git Bash:
-bash train_all_models.sh
-
-# Hoặc Python trực tiếp:
-python train_all_models.py
-```
+Reports: `make_rf_report.py`, `make_boost_report.py lgb|xgb`, `make_e_report.py`, `make_items_report.py`, `make_e8_report.py`,
+then `merge_reports.py` builds `Hybrid_Guard_Full_Report.docx`. The older `train_url_model.py` / `train_all_models.py`
+(LGB/RF/DT, fixed thresholds, random split) are legacy and not used by the webapp.
 
 ## Debug / Analyze URL
 
 Single URL (LightGBM model artifact):
 
 ```bash
-python debug_url_model.py --url "github.com" --model-path artifacts/lgb_final/url_phishing_model.joblib --timeout 8 --json
+python debug_url_model.py --url "github.com" --model-path artifacts/lgb_thesis/url_phishing_model.joblib --timeout 8 --json
 ```
 
 Fresh check without relying on previous cache:
 
 ```bash
-python debug_url_model.py --url "https://example.com" --model-path artifacts/lgb_final/url_phishing_model.joblib --force-enrichment --cache-file artifacts/tmp_cache_run.json --json
+python debug_url_model.py --url "https://example.com" --model-path artifacts/lgb_thesis/url_phishing_model.joblib --force-enrichment --cache-file artifacts/tmp_cache_run.json --json
 ```
 
 ## Run API + Web UI
@@ -108,13 +87,13 @@ Open:
 Model-only benchmark:
 
 ```bash
-python benchmark_url_detector.py --data Dataset.csv --mode ml --model-path artifacts/lgb_final/url_phishing_model.joblib --output-dir artifacts/benchmark_lgb
+python benchmark_url_detector.py --data Dataset_Hybrid.csv --mode ml --model-path artifacts/lgb_thesis/url_phishing_model.joblib --output-dir artifacts/benchmark_lgb
 ```
 
 Hybrid benchmark:
 
 ```bash
-python benchmark_url_detector.py --data Dataset.csv --mode hybrid --sample-size 500 --output-dir artifacts/benchmark_hybrid
+python benchmark_url_detector.py --data Dataset_Hybrid.csv --mode hybrid --sample-size 500 --output-dir artifacts/benchmark_hybrid
 ```
 
 ## Notes for This Repository
@@ -123,7 +102,7 @@ This repository is source-focused:
 
 - Included: source code, configs, scripts
 - Excluded by `.gitignore`:
-  - local dataset file (`Dataset.csv` / `Dataset.csv.csv`)
+  - local dataset file (`Dataset_Hybrid.csv`)
   - generated artifacts/reports/benchmarks (`artifacts/`)
   - virtual environment and caches
 
