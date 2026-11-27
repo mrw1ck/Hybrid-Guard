@@ -22,8 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default="lgb",
-        choices=["lgb", "rf", "dt"],
-        help="Model type: lgb = LightGBM (Gradient Boosting), rf = Random Forest, dt = Decision Tree.",
+        choices=["lgb", "rf", "xgb", "dt"],
+        help="Model type: lgb = LightGBM, rf = Random Forest, xgb = XGBoost, dt = Decision Tree.",
     )
     parser.add_argument("--label-col", default="label", help="Target label column.")
     parser.add_argument("--test-size", type=float, default=0.2, help="Test split ratio.")
@@ -64,9 +64,11 @@ def ensure_features(dataframe: pd.DataFrame) -> pd.DataFrame:
             "Dataset is missing required numeric feature columns and also has no 'url' column to regenerate them.",
         )
 
-    generated_features = dataframe["url"].apply(extract_url_features).apply(pd.Series)
+    print(f"Extracting {len(NUMERIC_FEATURES)} features for {len(dataframe):,} URLs...")
+    extracted_dicts = [extract_url_features(u) for u in dataframe["url"]]
+    feat_df = pd.DataFrame(extracted_dicts)
     for column in NUMERIC_FEATURES:
-        dataframe[column] = generated_features[column]
+        dataframe[column] = feat_df[column].values
     return dataframe
 
 
@@ -90,6 +92,18 @@ def build_model(args: argparse.Namespace):
             random_state=args.random_state,
             class_weight="balanced",
             n_jobs=-1,
+        )
+
+    if args.model == "xgb":
+        from xgboost import XGBClassifier
+        return XGBClassifier(
+            n_estimators=args.n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.max_depth if args.max_depth is not None else 8,
+            random_state=args.random_state,
+            n_jobs=-1,
+            eval_metric="logloss",
+            tree_method="hist",
         )
 
     if args.model == "dt":
@@ -117,7 +131,12 @@ def main() -> None:
     print(f"Loading dataset from: {data_path}...")
     dataframe = pd.read_csv(data_path)
     if args.label_col not in dataframe.columns:
-        raise ValueError(f"Missing label column: {args.label_col}")
+        for candidate in ["Label", "label", "target", "class"]:
+            if candidate in dataframe.columns:
+                args.label_col = candidate
+                break
+        else:
+            raise ValueError(f"Missing label column: {args.label_col}")
 
     dataframe = ensure_features(dataframe.copy())
     dataframe = dataframe.dropna(subset=[args.label_col])

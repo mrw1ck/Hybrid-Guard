@@ -1,0 +1,175 @@
+{
+  "model_id": "model2_lgbm",
+  "generated_at": "2026-11-22T19:16:02.100173+00:00",
+  "dataset": {
+    "total_rows": 650770,
+    "train_rows": 520616,
+    "test_rows": 130154,
+    "train_pos": 208246,
+    "train_neg": 312370,
+    "test_pos": 52062,
+    "test_neg": 78092
+  },
+  "best_params": {
+    "n_estimators": 857,
+    "num_leaves": 257,
+    "learning_rate": 0.04408991842576282,
+    "feature_fraction": 0.6798015797304817,
+    "bagging_fraction": 0.8382451265278859,
+    "min_child_samples": 25,
+    "max_depth": 11,
+    "reg_alpha": 2.1020120126802353,
+    "reg_lambda": 0.03938811000272599
+  },
+  "cv_metrics": [
+    {
+      "fold": 0,
+      "pr_auc": 0.9659974568879401,
+      "roc_auc": 0.970768869372479
+    },
+    {
+      "fold": 1,
+      "pr_auc": 0.9673085113434126,
+      "roc_auc": 0.9715773176080971
+    },
+    {
+      "fold": 2,
+      "pr_auc": 0.9662608191499342,
+      "roc_auc": 0.9692891187271719
+    },
+    {
+      "fold": 3,
+      "pr_auc": 0.9671248262440971,
+      "roc_auc": 0.9717099741997425
+    },
+    {
+      "fold": 4,
+      "pr_auc": 0.9608731508803141,
+      "roc_auc": 0.9662670418108685
+    }
+  ],
+  "oof_pr_auc_mean": 0.9655129529011397,
+  "oof_pr_auc_std": 0.0023725082349750795,
+  "oof_roc_auc_mean": 0.9699224643436718,
+  "oof_roc_auc_std": 0.0020205629338570126,
+  "test": {
+    "roc_auc": 0.9643554724289003,
+    "roc_auc_ci": [
+      0.9647845661986205,
+      0.9526398508715712,
+      0.9734108452983914
+    ],
+    "pr_auc": 0.9602210996425175,
+    "pr_auc_ci": [
+      0.9594914098418309,
+      0.9410313697807156,
+      0.9719991946466365
+    ],
+    "ece": 0.02050149075202194,
+    "ks_statistic": 0.8065185491064576
+  },
+  "thresholds": {
+    "tau_high": 0.8267045454545454,
+    "tau_high_metrics": {
+      "threshold": 0.8267045454545454,
+      "precision": 0.9848084063387289,
+      "recall": 0.7794744727440359,
+      "f1": 0.8701926685179427,
+      "fpr": 0.008016186036982021,
+      "fnr": 0.22052552725596405,
+      "tp": 40581,
+      "fp": 626,
+      "fn": 11481,
+      "tn": 77466
+    },
+    "tau_low": 0.06314958558084463,
+    "tau_low_metrics": {
+      "threshold": 0.06314958558084463,
+      "precision": 0.599276541446683,
+      "recall": 0.9832891552379854,
+      "f1": 0.7446921482343528,
+      "fpr": 0.4383419556420632,
+      "fnr": 0.01671084476201452,
+      "tp": 51192,
+      "fp": 34231,
+      "fn": 870,
+      "tn": 43861
+    }
+  },
+  "latency": {
+    "latency_us_mean": 1488.693000137573,
+    "latency_us_p50": 1457.299993489869,
+    "latency_us_p95": 1919.9100046535018,
+    "latency_us_p99": 2109.402996720746
+  },
+  "reference_models": {
+    "majority_class_pr_auc": 0.4000030732824193,
+    "depth2_tree_pr_auc": 0.7405398437566306
+  },
+  "split_sensitivity": {
+    "domain_grouped_pr_auc": 0.9602210996425175,
+    "random_url_level_pr_auc": 0.9790388583595817,
+    "note": "Random split inflates PR-AUC if same domain in train+test."
+  },
+  "strata": {
+    "hard_urls": {
+      "n": 913,
+      "pr_auc": 0.9905552458094721,
+      "threshold": 0.8267045454545454,
+      "precision": 0.9760479041916168,
+      "recall": 0.9346330275229358,
+      "f1": 0.9548916227299356,
+      "fpr": 0.4878048780487805,
+      "fnr": 0.06536697247706422,
+      "tp": 815,
+      "fp": 20,
+      "fn": 57,
+      "tn": 21
+    },
+    "normal_urls": {
+      "n": 129241,
+      "pr_auc": 0.9582777188802478,
+      "threshold": 0.8267045454545454,
+      "precision": 0.9849895967502229,
+      "recall": 0.7768314123852315,
+      "f1": 0.8686136170026867,
+      "fpr": 0.007764154206864742,
+      "fnr": 0.22316858761476852,
+      "tp": 39766,
+      "fp": 606,
+      "fn": 11424,
+      "tn": 77445
+    },
+    "shallow_path": {
+      "n": 95976,
+      "pr_auc": 0.9714758774218006
+    },
+    "deep_path": {
+      "n": 34178,
+      "pr_auc": 0.8830026866724708
+    }
+  },
+  "features": [
+    "HostRatio",
+    "PathRatio",
+    "NoOfDots",
+    "NoOfHyphens",
+    "NoOfDigits",
+    "NoOfSlashes",
+    "NoOfQueryParams",
+    "DigitRatio",
+    "SpecialCharRatio",
+    "NoOfObfuscatedChar",
+    "HostEntropy",
+    "PathEntropy",
+    "HasAtSymbol",
+    "SubdomainRatio",
+    "IsPunycode",
+    "HasNonStandardPort",
+    "HasBrandInSubdomainOrPath",
+    "IsShortener",
+    "HasEmbeddedURL"
+  ],
+  "n_features": 19,
+  "elapsed_seconds": 1291.346086799982
+}

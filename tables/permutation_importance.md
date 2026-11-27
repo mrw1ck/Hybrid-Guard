@@ -1,0 +1,21 @@
+| feature                   |   importance_mean |   importance_std |
+|:--------------------------|------------------:|-----------------:|
+| PathRatio                 |       0.151666    |      0.000741776 |
+| NoOfDots                  |       0.0357095   |      0.00028351  |
+| NoOfSlashes               |       0.0346499   |      0.000281508 |
+| HostRatio                 |       0.0264395   |      0.000251281 |
+| PathEntropy               |       0.0256561   |      0.000185733 |
+| SubdomainRatio            |       0.0210078   |      0.000125254 |
+| SpecialCharRatio          |       0.0205732   |      0.000134264 |
+| NoOfDigits                |       0.0164301   |      0.000422452 |
+| NoOfHyphens               |       0.0123394   |      0.000160739 |
+| HasBrandInSubdomainOrPath |       0.00927678  |      0.000189267 |
+| HostEntropy               |       0.00837499  |      0.000177713 |
+| NoOfQueryParams           |       0.00674946  |      8.36741e-05 |
+| DigitRatio                |       0.00617541  |      0.000192092 |
+| HasNonStandardPort        |       0.00275791  |      0.000118405 |
+| HasEmbeddedURL            |       0.000332921 |      1.29997e-05 |
+| IsShortener               |       0.000216963 |      2.69794e-05 |
+| HasAtSymbol               |       3.28861e-05 |      1.26117e-05 |
+| IsPunycode                |       2.80669e-05 |      7.30681e-06 |
+| NoOfObfuscatedChar        |       2.73621e-06 |      6.38878e-07 |

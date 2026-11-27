@@ -7,7 +7,8 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
 - Multi-model support:
   - LGB (LightGBM: Gradient Boosted Decision Trees - fast, high accuracy on large datasets)
   - RF (Random Forest)
-  - DT (Decision Tree)
+  - XGB (XGBoost: Extreme Gradient Boosting - high precision & robustness)
+- Combined URL + QR Code (Quishing) feature analysis (33 features: 19 URL lexical + 14 QR metadata)
 - Hybrid risk scoring pipeline:
   - Base model probability
   - Policy/risk adjustment
@@ -19,9 +20,9 @@ Hybrid-Guard is a phishing URL risk analyzer that combines machine learning pred
 
 - `url_ml/`: feature engineering components
 - `webapp/`: FastAPI backend + Jinja UI
-- `train_url_model.py`: train LightGBM / RF / DT model
+- `train_url_model.py`: train LightGBM / RF / XGB model
 - `train_lgb_model.py`: convenience entrypoint for LightGBM mode
-- `train_all_models.py`: train & benchmark all models (LGB, RF, DT) in sequence
+- `train_all_models.py`: train & benchmark all models (LGB, RF, XGB) in sequence
 - `debug_url_model.py`: inspect one or multiple URLs with explainable output
 - `benchmark_url_detector.py`: benchmark model or hybrid mode
 - `requirements.txt`: Python dependencies
@@ -60,13 +61,13 @@ python train_url_model.py --data Dataset.csv --model lgb --output-dir artifacts/
 python train_url_model.py --data Dataset.csv --model rf --output-dir artifacts/rf_final
 ```
 
-### Train DT (Decision Tree)
+### Train XGB (XGBoost)
 
 ```bash
-python train_url_model.py --data Dataset.csv --model dt --max-depth 10 --output-dir artifacts/dt_final
+python train_url_model.py --data Dataset.csv --model xgb --output-dir artifacts/xgb_final
 ```
 
-### Train All Models (LGB, RF, DT) & Compare Benchmark
+### Train All Models (LGB, RF, XGB) & Compare Benchmark
 
 ```bash
 # Trên Windows:

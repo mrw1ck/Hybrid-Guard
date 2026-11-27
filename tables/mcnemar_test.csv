@@ -1,0 +1,5 @@
+﻿Phân loại,Số mẫu,Tỷ lệ (%)
+Cả 2 mô hình cùng đoán ĐÚNG (a),86692,66.61
+"LightGBM ĐÚNG, Baseline SAI (b)",31355,24.09
+"Baseline ĐÚNG, LightGBM SAI (c)",3781,2.91
+Cả 2 mô hình cùng đoán SAI (d),8326,6.4

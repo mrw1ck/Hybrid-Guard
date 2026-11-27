@@ -12,9 +12,9 @@ class ModelService:
         self.feature_stats = artifact["feature_stats"]
         self.model_type = artifact.get("training", {}).get("model_type", "lgb")
 
-    def predict(self, url: str) -> tuple[dict, int, float]:
-        features = extract_url_features(url)
-        feature_frame = pd.DataFrame([{name: features[name] for name in self.feature_names}])
+    def predict(self, url: str, qr_metadata: dict | None = None) -> tuple[dict, int, float]:
+        features = extract_url_features(url, qr_metadata=qr_metadata)
+        feature_frame = pd.DataFrame([{name: features.get(name, 0.0) for name in self.feature_names}])
 
         predicted_class = int(self.model.predict(feature_frame)[0])
         if hasattr(self.model, "predict_proba"):

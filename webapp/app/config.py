@@ -18,6 +18,10 @@ RF_MODEL_PATH = _first_existing(
     ARTIFACTS_DIR / "rf_final" / "url_phishing_model.joblib",
     ARTIFACTS_DIR / "url_phishing_model.joblib",
 )
+XGB_MODEL_PATH = _first_existing(
+    ARTIFACTS_DIR / "xgb_final" / "url_phishing_model.joblib",
+    ARTIFACTS_DIR / "xgb_model" / "url_phishing_model.joblib",
+)
 DT_MODEL_PATH = _first_existing(
     ARTIFACTS_DIR / "dt_final" / "url_phishing_model.joblib",
     ARTIFACTS_DIR / "dt_model" / "url_phishing_model.joblib",
@@ -28,6 +32,7 @@ CACHE_PATH = ARTIFACTS_DIR / "web_external_cache.json"
 MODEL_PATHS = {
     "lgb": LGB_MODEL_PATH,
     "rf": RF_MODEL_PATH,
+    "xgb": XGB_MODEL_PATH,
     "dt": DT_MODEL_PATH,
 }
 
