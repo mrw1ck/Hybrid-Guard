@@ -10,6 +10,7 @@ from webapp.app.config import CACHE_PATH, DEFAULT_MODEL_MODE, MODEL_PATHS
 from webapp.app.services.analyzer_service import UrlAnalyzerService
 from webapp.app.services.cache_store import JsonCacheStore
 from webapp.app.services.model_service import ModelService
+from webapp.app.services.thesis_model_service import ThesisModelService
 
 
 def create_app() -> FastAPI:
@@ -24,7 +25,7 @@ def create_app() -> FastAPI:
     for mode, model_path in MODEL_PATHS.items():
         if model_path.exists():
             analyzers[mode] = UrlAnalyzerService(
-                model_service=ModelService(model_path),
+                model_service=ThesisModelService(model_path) if "_thesis" in str(model_path) else ModelService(model_path),
                 cache_store=cache_store,
             )
 
@@ -54,5 +55,5 @@ def create_app() -> FastAPI:
     return app
 
 
-# Initialize application instance with all detected models (lgb, rf, dt)
+# Initialize application instance with all detected models (lgb, xgb, rf)
 app = create_app()

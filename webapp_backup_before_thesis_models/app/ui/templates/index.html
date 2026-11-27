@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>URL Risk Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ request.url_for('static', path='js/html5-qrcode.min.js') }}"></script>
+    <script>
+        if (typeof Html5Qrcode === 'undefined') {
+            document.write('<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"><\/script>');
+        }
+    </script>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='css/index.css') }}">
+</head>
+
+<body>
+    <main class="wrap">
+        <section class="panel">
+            <h1 class="hero-title">URL Risk Scanner</h1>
+            <p class="hero-sub">
+                Nhập URL hoặc quét mã QR để kiểm tra mức độ rủi ro phishing (Quishing). Hệ thống kết hợp AI với kiểm tra DNS, IP, SSL, tuổi domain
+                và tín hiệu nội dung trang.
+            </p>
+
+            <div class="form-section">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="field-label" for="urlInput">URL Cần Kiểm Tra</label>
+                        <input id="urlInput" class="url-input" type="text" autocomplete="off"
+                            placeholder="github.com hoặc https://example.com/login">
+                        <div class="field-help">Nhập domain trần hoặc URL đầy đủ. Hệ thống sẽ tự chuẩn hóa.</div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="modeSelect">Mô Hình</label>
+                        <select id="modeSelect" class="mode-select" aria-label="Chọn mode mô hình">
+                            {% for mode in available_modes %}
+                            <option value="{{ mode }}" {% if mode==default_mode %}selected{% endif %}>{{ mode|upper }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="field-help">LGB (LightGBM boosting), RF (Random Forest), DT (Decision Tree).</div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="analyzeBtn">Thực Thi</label>
+                        <button id="analyzeBtn" class="btn" type="button">Phân tích</button>
+                        <div class="field-help">Enter để chạy nhanh.</div>
+                    </div>
+                </div>
+                <div class="form-options-row">
+                    <button id="toggleQrBtn" class="qr-trigger-btn" type="button" aria-expanded="false" aria-controls="qrScannerCard">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                            <path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M10 7h4M10 17h4M7 10v4M17 10v4M12 12v.01"></path>
+                        </svg>
+                        <span>Quét mã QR</span>
+                        <span class="qr-badge">Quishing</span>
+                    </button>
+
+                    <label class="recheck-toggle" for="recheckToggle">
+                        <input id="recheckToggle" type="checkbox">
+                        Recheck live (bỏ cache)
+                    </label>
+                </div>
+
+                <!-- QR Scanner Card (Quishing Detector) -->
+                <div id="qrScannerCard" class="qr-scanner-card hidden">
+                    <div class="qr-card-header">
+                        <div>
+                            <h3 class="qr-card-title">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3M9 9h6v6H9z"></path>
+                                </svg>
+                                Trình Quét Mã QR &amp; Phát Hiện Quishing
+                            </h3>
+                            <p class="qr-card-sub">Quét mã QR từ camera trực tiếp, tải ảnh lên, kéo thả file hoặc dán ảnh từ clipboard (Ctrl + V).</p>
+                        </div>
+                        <button id="closeQrBtn" class="qr-close-btn" type="button" title="Đóng trình quét QR">✕</button>
+                    </div>
+
+                    <div class="qr-quishing-alert">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span><strong>Cảnh giác Quishing (QR Phishing):</strong> Kẻ gian thường che giấu URL lừa đảo độc hại qua mã QR dán nơi công cộng hoặc trong email. Hybrid-Guard sẽ trích xuất liên kết và phân tích rủi ro an toàn cho bạn.</span>
+                    </div>
+
+                    <div class="qr-tabs" role="tablist">
+                        <button id="qrTabCamera" class="qr-tab active" type="button" role="tab" aria-selected="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                            Camera Trực Tiếp
+                        </button>
+                        <button id="qrTabUpload" class="qr-tab" type="button" role="tab" aria-selected="false">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            Tải Ảnh / Kéo Thả / Ctrl + V
+                        </button>
+                    </div>
+
+                    <!-- Camera View -->
+                    <div id="qrCameraView" class="qr-view active">
+                        <div class="qr-camera-controls">
+                            <select id="qrCameraSelect" class="qr-camera-select" aria-label="Chọn thiết bị camera">
+                                <option value="">Đang tải danh sách camera...</option>
+                            </select>
+                            <button id="startQrCameraBtn" class="btn-qr-action" type="button">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                Bật Camera
+                            </button>
+                            <button id="stopQrCameraBtn" class="btn-qr-action btn-danger" type="button" style="display:none">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                                Tắt Camera
+                            </button>
+                        </div>
+
+                        <div id="qrCameraContainer" class="qr-camera-container">
+                            <div id="qrPlaceholder" class="qr-placeholder-camera">
+                                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                                <strong>Camera đang tắt</strong>
+                                <p>Nhấn nút "Bật Camera" ở trên để cấp quyền trình duyệt và quét trực tiếp qua webcam hoặc camera điện thoại.</p>
+                            </div>
+                            <div id="qrReader"></div>
+                            <div id="qrHudOverlay" class="qr-hud-overlay">
+                                <div class="qr-hud-reticle">
+                                    <div class="qr-hud-corners-bottom"></div>
+                                    <div class="qr-laser-line"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Upload / Dropzone View -->
+                    <div id="qrUploadView" class="qr-view">
+                        <div id="qrDropzone" class="qr-dropzone">
+                            <input type="file" id="qrFileInput" accept="image/*" style="display:none">
+                            <svg class="qr-upload-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                                <path d="M12 12v9"></path>
+                                <path d="m8 16 4-4 4 4"></path>
+                            </svg>
+                            <h4 class="qr-dropzone-title">Kéo &amp; thả ảnh QR vào đây hoặc bấm để chọn tệp</h4>
+                            <p class="qr-dropzone-sub">Hỗ trợ định dạng PNG, JPG, JPEG, WEBP, SVG</p>
+                            <div class="qr-paste-badge">
+                                <span>💡 Mẹo: Nhấn <kbd>Ctrl</kbd> + <kbd>V</kbd> bất kỳ lúc nào để dán ảnh chụp màn hình</span>
+                            </div>
+                        </div>
+
+                        <div class="qr-sample-bar">
+                            <span class="qr-sample-label">Thử nghiệm nhanh:</span>
+                            <button id="btnSampleSafe" class="qr-sample-btn" type="button">
+                                <span>🛡️ Thử QR an toàn (GitHub)</span>
+                            </button>
+                            <button id="btnSamplePhishing" class="qr-sample-btn" type="button">
+                                <span>⚠️ Thử QR đáng ngờ (Phishing demo)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Decoded Result Box -->
+                    <div id="qrResultBox" class="qr-result-box hidden">
+                        <div class="qr-result-header">
+                            <span id="qrResultBadge" class="qr-result-badge badge-url">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                                Phát hiện liên kết URL
+                            </span>
+                            <span id="qrTimeBadge" style="font-size:11px; color:var(--muted)">Vừa quét</span>
+                        </div>
+
+                        <div class="qr-result-content">
+                            <div id="qrResultText" class="qr-result-text"></div>
+                            <button id="qrCopyBtn" class="qr-copy-btn" type="button" title="Sao chép nội dung">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                        </div>
+
+                        <div id="qrResultMeta" class="qr-result-meta">
+                            <div class="qr-result-meta-item">
+                                <span>Giao thức:</span>
+                                <strong id="qrMetaProtocol">HTTPS</strong>
+                            </div>
+                            <div class="qr-result-meta-item">
+                                <span>Domain trích xuất:</span>
+                                <strong id="qrMetaDomain">github.com</strong>
+                            </div>
+                        </div>
+
+                        <div class="qr-action-buttons">
+                            <button id="qrAnalyzeBtn" class="btn-qr-analyze" type="button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                                Phân Tích Rủi Ro URL Này Ngay
+                            </button>
+                            <button id="qrFillBtn" class="btn-qr-fill" type="button">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                Chèn Vào Ô Nhập
+                            </button>
+                            <button id="qrResetBtn" class="btn-qr-reset" type="button">
+                                🔄 Quét mã khác
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="meta-note">Gợi ý: Quét mã QR hoặc nhập trực tiếp URL. Chuyển mode để so sánh kết quả từ các mô hình AI khác nhau.</div>
+                <div id="errorBox" class="error hidden"></div>
+            </div>
+
+            <div id="resultPanel" class="result hidden">
+                <div class="summary-grid">
+                    <article class="metric">
+                        <div class="label">Mức cảnh báo <span class="hint" tabindex="0"
+                                data-tip="Kết luận cuối cùng sau khi cộng điểm từ AI và các kiểm tra bên ngoài.">?</span>
+                        </div>
+                        <div id="riskTier" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Xác suất độc hại cuối <span class="hint" tabindex="0"
+                                data-tip="Xác suất sau khi hợp nhất kết quả AI + DNS/SSL/domain age/content.">?</span>
+                        </div>
+                        <div id="finalPercent" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Xác suất từ AI gốc <span class="hint" tabindex="0"
+                                data-tip="Xác suất do mô hình AI trả về trước khi áp dụng các luật bổ sung.">?</span>
+                        </div>
+                        <div id="basePercent" class="value"></div>
+                    </article>
+                    <article class="metric">
+                        <div class="label">Chính sách TLD <span class="hint" tabindex="0"
+                                data-tip="Trusted TLD có thể giảm mức kiểm tra sâu. Non-trusted TLD thường bị kiểm tra đầy đủ.">?</span>
+                        </div>
+                        <div id="tldPolicy" class="value" style="font-size:15px"></div>
+                    </article>
+                </div>
+
+                <div class="split">
+                    <div class="box">
+                        <h3>Tóm tắt phân tích</h3>
+                        <table>
+                            <tbody id="summaryBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="box">
+                        <h3>Biểu đồ xác suất</h3>
+                        <canvas id="riskChart" height="185"></canvas>
+                    </div>
+                </div>
+
+                <div class="table-grid">
+                    <div class="box">
+                        <h3>Domain / DNS / SSL</h3>
+                        <table>
+                            <tbody id="domainChecksBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="box">
+                        <h3>Tuổi domain / HTTP content</h3>
+                        <table>
+                            <tbody id="ageContentBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="box" style="margin-bottom: 12px;">
+                    <h3>Top tín hiệu đặc trưng (AI)</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:22%">Feature</th>
+                                <th style="width:18%">Value</th>
+                                <th style="width:18%">Importance</th>
+                                <th>Debug Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="featureBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="box">
+                    <h3>Lý do hợp nhất kết quả</h3>
+                    <ul id="reasonsList"></ul>
+                </div>
+
+                <div class="foot-note">
+                    Lưu ý: kết quả này phục vụ hỗ trợ phân tích rủi ro, không thay thế hoàn toàn cho hệ thống bảo mật
+                    chuyên dụng trong production.
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="appTooltip" class="app-tooltip" role="tooltip" aria-hidden="true"></div>
+
+    <script>
+        const analyzeBtn = document.getElementById("analyzeBtn");
+        const urlInput = document.getElementById("urlInput");
+        const modeSelect = document.getElementById("modeSelect");
+        const resultPanel = document.getElementById("resultPanel");
+        const errorBox = document.getElementById("errorBox");
+        const appTooltip = document.getElementById("appTooltip");
+        const recheckToggle = document.getElementById("recheckToggle");
+        let riskChart = null;
+        let activeHint = null;
+
+        function pct(v) { return (Number(v) * 100).toFixed(2) + "%"; }
+        function safe(v) { return v === null || v === undefined || v === "" ? "N/A" : String(v); }
+        function vnBool(v) { return v === true ? "Có" : (v === false ? "Không" : "N/A"); }
+        function escapeHtml(text) {
+            return String(text)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+
+        function placeTooltip(x, y) {
+            const margin = 12;
+            const rect = appTooltip.getBoundingClientRect();
+            let left = x + 14;
+            let top = y + 14;
+
+            if (left + rect.width > window.innerWidth - margin) {
+                left = x - rect.width - 14;
+            }
+            if (top + rect.height > window.innerHeight - margin) {
+                top = y - rect.height - 14;
+            }
+            left = Math.max(margin, left);
+            top = Math.max(margin, top);
+            appTooltip.style.left = `${left}px`;
+            appTooltip.style.top = `${top}px`;
+        }
+
+        function showTooltip(hintEl, x, y) {
+            const message = hintEl.getAttribute("data-tip") || hintEl.getAttribute("title");
+            if (!message) return;
+            appTooltip.textContent = message;
+            appTooltip.classList.add("show");
+            appTooltip.setAttribute("aria-hidden", "false");
+            activeHint = hintEl;
+            placeTooltip(x, y);
+        }
+
+        function hideTooltip() {
+            appTooltip.classList.remove("show");
+            appTooltip.setAttribute("aria-hidden", "true");
+            activeHint = null;
+        }
+
+        function setRows(targetId, rows) {
+            const body = document.getElementById(targetId);
+            body.innerHTML = rows.map(([k, v, tip]) => {
+                const th = tip
+                    ? `${k} <span class="hint" tabindex="0" data-tip="${escapeHtml(tip)}">?</span>`
+                    : k;
+                return `<tr><th>${th}</th><td>${safe(v)}</td></tr>`;
+            }).join("");
+        }
+
+        document.addEventListener("mouseover", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            showTooltip(hint, event.clientX, event.clientY);
+        });
+
+        document.addEventListener("mousemove", (event) => {
+            if (!activeHint) return;
+            placeTooltip(event.clientX, event.clientY);
+        });
+
+        document.addEventListener("mouseout", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            hideTooltip();
+        });
+
+        document.addEventListener("focusin", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            const rect = hint.getBoundingClientRect();
+            showTooltip(hint, rect.left + rect.width / 2, rect.top + rect.height / 2);
+        });
+
+        document.addEventListener("focusout", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) return;
+            hideTooltip();
+        });
+
+        document.addEventListener("click", (event) => {
+            const hint = event.target.closest(".hint");
+            if (!hint) {
+                hideTooltip();
+                return;
+            }
+            if (activeHint === hint) {
+                hideTooltip();
+                return;
+            }
+            const rect = hint.getBoundingClientRect();
+            showTooltip(hint, rect.left + rect.width / 2, rect.bottom);
+        });
+
+        function setList(targetId, values) {
+            const el = document.getElementById(targetId);
+            const list = values && values.length ? values : ["Không có lý do bổ sung đáng kể."];
+            el.innerHTML = list.map(v => `<li>${safe(v)}</li>`).join("");
+        }
+
+        function formatDelta(baseProbability, finalProbability) {
+            const delta = Number(finalProbability || 0) - Number(baseProbability || 0);
+            const sign = delta > 0 ? "+" : "";
+            return `${sign}${delta.toFixed(4)} (${sign}${(delta * 100).toFixed(2)}%)`;
+        }
+
+        function buildFallbackFusionReasons(data) {
+            const checks = data.checks || {};
+            const age = checks.domain_age || {};
+            const http = checks.http || {};
+            const dns = checks.dns || {};
+            const ssl = checks.ssl || {};
+            const policy = data.policy || {};
+
+            const fallback = [];
+            const delta = Number(data.final_malicious_probability || 0) - Number(data.base_malicious_probability || 0);
+            fallback.push(`Không có fusion reasons cụ thể từ backend. Delta hợp nhất hiện tại: ${delta >= 0 ? "+" : ""}${delta.toFixed(4)}.`);
+
+            if (age.error) {
+                fallback.push(`Domain age check không dùng được: ${age.error}`);
+            }
+            if (http.error) {
+                fallback.push(`HTTP content check lỗi: ${http.error}`);
+            }
+
+            fallback.push(`TLD policy: ${safe(policy.tld_policy)} (.${safe(policy.tld)}), full_checks=${vnBool(policy.full_checks)}.`);
+            fallback.push(`Nguồn dữ liệu: DNS cache=${vnBool(dns.from_cache)}, SSL cache=${vnBool(ssl.from_cache)}, DomainAge cache=${vnBool(age.from_cache)}, HTTP cache=${vnBool(http.from_cache)}.`);
+            return fallback;
+        }
+
+        function renderFusionReasons(data) {
+            const reasons = data.fusion_reasons || [];
+            if (reasons.length) {
+                setList("reasonsList", reasons);
+                return;
+            }
+            setList("reasonsList", buildFallbackFusionReasons(data));
+        }
+
+        urlInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                analyzeBtn.click();
+            }
+        });
+
+        function updateChart(data) {
+            const ctx = document.getElementById("riskChart").getContext("2d");
+            if (riskChart) riskChart.destroy();
+            riskChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: ["AI gốc", "Sau hợp nhất", "Ngưỡng Suspicious", "Ngưỡng Malicious"],
+                    datasets: [{
+                        label: "Xác suất",
+                        data: [
+                            Number(data.base_malicious_probability || 0),
+                            Number(data.final_malicious_probability || 0),
+                            Number(data.thresholds?.suspicious || 0.25),
+                            Number(data.thresholds?.malicious || 0.5),
+                        ],
+                        backgroundColor: ["#38bdf8", "#f59e0b", "#22c55e", "#ef4444"],
+                        borderRadius: 10,
+                    }]
+                },
+                options: {
+                    animation: { duration: 680, easing: "easeOutQuart" },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${(ctx.raw * 100).toFixed(2)}%`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: { callback: (v) => `${(v * 100).toFixed(0)}%`, color: "#9fb2c7" },
+                            grid: { color: "rgba(255,255,255,0.1)" },
+                        },
+                        x: {
+                            ticks: { color: "#cbd5e1" },
+                            grid: { display: false },
+                        }
+                    }
+                }
+            });
+        }
+
+        analyzeBtn.addEventListener("click", async () => {
+            const url = urlInput.value.trim();
+            const mode = modeSelect.value;
+            const recheck = Boolean(recheckToggle?.checked);
+            if (!url) {
+                errorBox.textContent = "Vui lòng nhập URL trước khi phân tích.";
+                errorBox.classList.remove("hidden");
+                urlInput.focus();
+                return;
+            }
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = "Đang phân tích...";
+            errorBox.classList.add("hidden");
+
+            try {
+                const response = await fetch("/api/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, mode, recheck })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || "Không thể phân tích URL");
+
+                resultPanel.classList.remove("hidden");
+                document.getElementById("riskTier").textContent = data.risk_tier;
+                document.getElementById("riskTier").className = "value tier-" + data.final_prediction;
+                document.getElementById("finalPercent").textContent = pct(data.final_malicious_probability);
+                document.getElementById("basePercent").textContent = pct(data.base_malicious_probability);
+                document.getElementById("tldPolicy").textContent = `${safe(data.policy.tld_policy)} (.${safe(data.policy.tld)})`;
+
+                setRows("summaryBody", [
+                    ["URL đầu vào", data.url, "URL mà người dùng gửi để phân tích."],
+                    ["URL chuẩn hóa", data.normalized_url, "Dạng URL đã được chuẩn hóa để phân tích và gọi external checks."],
+                    ["Mode", (data.mode || "N/A").toUpperCase(), "Mode mô hình người dùng đã chọn trên UI."],
+                    ["Model type", (data.model_type || "N/A").toUpperCase(), "Loại model backend đang dùng thực tế cho mode này."],
+                    ["Recheck live", vnBool(data.policy?.recheck), "Nếu Có: bỏ qua cache và truy vấn lại DNS/SSL/RDAP/HTTP."],
+                    ["Dự đoán từ AI", data.model_prediction, "Kết quả dự đoán trực tiếp từ mô hình học máy."],
+                    ["Dự đoán cuối", data.final_prediction, "Kết quả sau khi kết hợp AI và các kiểm tra kỹ thuật."],
+                    ["Delta hợp nhất", formatDelta(data.base_malicious_probability, data.final_malicious_probability), "Độ thay đổi xác suất sau khi áp dụng policy + external checks."],
+                    ["Số lý do hợp nhất", (data.fusion_reasons || []).length, "Số lý do backend trả về để giải thích việc điều chỉnh."],
+                    ["Full checks", vnBool(data.policy?.full_checks), "Cho biết pipeline có chạy đầy đủ domain age + HTTP checks hay không."],
+                    ["Risk triggers", (data.risk_triggers || []).join(" | ") || "Không có", "Các tín hiệu kích hoạt kiểm tra sâu."],
+                    ["Ngưỡng Suspicious", data.thresholds.suspicious, "Nếu xác suất >= ngưỡng này thì xếp nghi ngờ."],
+                    ["Ngưỡng Malicious", data.thresholds.malicious, "Nếu xác suất >= ngưỡng này thì xếp độc hại."],
+                ]);
+
+                const dns = data.checks.dns || {};
+                const ssl = data.checks.ssl || {};
+                setRows("domainChecksBody", [
+                    ["DNS resolve", vnBool(dns.resolved), "Domain có phân giải ra IP hay không."],
+                    ["IP", (dns.ips || []).join(", ") || "N/A", "Danh sách IP thu được từ DNS lookup."],
+                    ["Công cụ DNS", dns.tool, "Công cụ hệ thống đã dùng để truy vấn DNS."],
+                    ["DNS từ cache", vnBool(dns.from_cache), "Kết quả DNS lấy từ cache hay truy vấn mới."],
+                    ["SSL khả dụng", vnBool(ssl.available), "Website có SSL hợp lệ hay không."],
+                    ["SSL issuer", ssl.issuer, "Tổ chức cấp chứng chỉ SSL."],
+                    ["Hạn SSL", ssl.not_after, "Thời điểm chứng chỉ SSL hết hạn."],
+                    ["Số ngày còn lại", ssl.days_until_expiration, "Số ngày còn lại trước khi SSL hết hạn."],
+                    ["SSL từ cache", vnBool(ssl.from_cache), "Kết quả SSL lấy từ cache hay truy vấn mới."],
+                    ["Lỗi SSL", ssl.error, "Lỗi khi kiểm tra SSL (nếu có)."],
+                ]);
+
+                const age = data.checks.domain_age || {};
+                const http = data.checks.http || {};
+                setRows("ageContentBody", [
+                    ["Ngày đăng ký", age.registered_at, "Thời điểm domain được đăng ký."],
+                    ["Tuổi domain (ngày)", age.days_since_registration, "Số ngày tồn tại của domain."],
+                    ["Ngày hết hạn", age.expires_at, "Thời điểm domain hết hạn."],
+                    ["Nguồn tuổi domain", age.source, "Nguồn dữ liệu RDAP dùng để tra cứu tuổi domain."],
+                    ["Domain age từ cache", vnBool(age.from_cache), "Kết quả tuổi domain lấy từ cache hay truy vấn mới."],
+                    ["Lỗi tuổi domain", age.error, "Lỗi khi truy vấn RDAP (nếu có)."],
+                    ["HTTP status", http.status_code, "Mã phản hồi HTTP của trang."],
+                    ["Redirect hops", http.redirect_hops, "Số lần chuyển hướng khi truy cập URL."],
+                    ["Từ khóa nhạy cảm", (http.keyword_hits || []).join(", ") || "Không có", "Các từ khóa nhạy cảm phát hiện trong nội dung."],
+                    ["Form mật khẩu", vnBool(http.password_form_detected), "Trang có xuất hiện input password hay không."],
+                    ["HTTP từ cache", vnBool(http.from_cache), "Kết quả HTTP/content lấy từ cache hay truy vấn mới."],
+                    ["Lỗi HTTP", http.error, "Lỗi khi thu thập thông tin HTTP/content."],
+                ]);
+
+                const fBody = document.getElementById("featureBody");
+                fBody.innerHTML = (data.top_debug_features || []).map(f =>
+                    `<tr><td>${safe(f.feature)}</td><td>${Number(f.value).toFixed(4)}</td><td>${Number(f.importance).toFixed(4)}</td><td>${Number(f.debug_score).toFixed(4)}</td></tr>`
+                ).join("");
+
+                renderFusionReasons(data);
+                updateChart(data);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove("hidden");
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = "Phân tích";
+            }
+        });
+
+        /* ==========================================================================
+           QR Code / Quishing Scanner Controller
+           ========================================================================== */
+        const toggleQrBtn = document.getElementById("toggleQrBtn");
+        const closeQrBtn = document.getElementById("closeQrBtn");
+        const qrScannerCard = document.getElementById("qrScannerCard");
+        const qrTabCamera = document.getElementById("qrTabCamera");
+        const qrTabUpload = document.getElementById("qrTabUpload");
+        const qrCameraView = document.getElementById("qrCameraView");
+        const qrUploadView = document.getElementById("qrUploadView");
+        const qrCameraSelect = document.getElementById("qrCameraSelect");
+        const startQrCameraBtn = document.getElementById("startQrCameraBtn");
+        const stopQrCameraBtn = document.getElementById("stopQrCameraBtn");
+        const qrCameraContainer = document.getElementById("qrCameraContainer");
+        const qrPlaceholder = document.getElementById("qrPlaceholder");
+        const qrDropzone = document.getElementById("qrDropzone");
+        const qrFileInput = document.getElementById("qrFileInput");
+        const qrResultBox = document.getElementById("qrResultBox");
+        const qrResultBadge = document.getElementById("qrResultBadge");
+        const qrResultText = document.getElementById("qrResultText");
+        const qrResultMeta = document.getElementById("qrResultMeta");
+        const qrMetaProtocol = document.getElementById("qrMetaProtocol");
+        const qrMetaDomain = document.getElementById("qrMetaDomain");
+        const qrCopyBtn = document.getElementById("qrCopyBtn");
+        const qrAnalyzeBtn = document.getElementById("qrAnalyzeBtn");
+        const qrFillBtn = document.getElementById("qrFillBtn");
+        const qrResetBtn = document.getElementById("qrResetBtn");
+        const qrToast = document.getElementById("qrToast");
+        const qrToastMsg = document.getElementById("qrToastMsg");
+        const btnSampleSafe = document.getElementById("btnSampleSafe");
+        const btnSamplePhishing = document.getElementById("btnSamplePhishing");
+
+        let html5QrScanner = null;
+        let isCameraRunning = false;
+        let lastDecodedText = "";
+        let toastTimeout = null;
+
+        function showToast(message) {
+            if (!qrToast || !qrToastMsg) return;
+            qrToastMsg.textContent = message;
+            qrToast.classList.add("show");
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                qrToast.classList.remove("show");
+            }, 3200);
+        }
+
+        function playBeep() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                gain.gain.setValueAtTime(0.08, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.16);
+            } catch (e) {
+                /* Audio blocked by browser policy */
+            }
+        }
+
+        function isLikelyUrl(text) {
+            if (!text) return false;
+            const str = text.trim();
+            if (/^https?:\/\//i.test(str)) return true;
+            if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(\/.*)?$/i.test(str)) return true;
+            return false;
+        }
+
+        function parseUrlMeta(text) {
+            try {
+                let s = text.trim();
+                const hasScheme = /^https?:\/\//i.test(s);
+                const protocol = hasScheme ? s.split("://")[0].toUpperCase() : "HTTP (Tự động gán)";
+                if (!hasScheme) s = "http://" + s;
+                const parsed = new URL(s);
+                return {
+                    domain: parsed.hostname,
+                    protocol: protocol,
+                    isUrl: true
+                };
+            } catch (e) {
+                return {
+                    domain: "N/A",
+                    protocol: "N/A",
+                    isUrl: false
+                };
+            }
+        }
+
+        function getQrScannerInstance() {
+            if (!html5QrScanner && typeof Html5Qrcode !== "undefined") {
+                html5QrScanner = new Html5Qrcode("qrReader");
+            }
+            return html5QrScanner;
+        }
+
+        async function loadCameraDevices() {
+            if (typeof Html5Qrcode === "undefined") return;
+            try {
+                const devices = await Html5Qrcode.getCameras();
+                qrCameraSelect.innerHTML = "";
+                if (devices && devices.length > 0) {
+                    devices.forEach((device, index) => {
+                        const opt = document.createElement("option");
+                        opt.value = device.id;
+                        opt.textContent = device.label || `Camera ${index + 1}`;
+                        qrCameraSelect.appendChild(opt);
+                    });
+                } else {
+                    const opt = document.createElement("option");
+                    opt.value = "";
+                    opt.textContent = "Không tìm thấy camera khả dụng";
+                    qrCameraSelect.appendChild(opt);
+                }
+            } catch (err) {
+                qrCameraSelect.innerHTML = `<option value="">Không có quyền truy cập camera (${err.message || "Bị từ chối"})</option>`;
+            }
+        }
+
+        async function startCamera() {
+            if (isCameraRunning) return;
+            const scanner = getQrScannerInstance();
+            if (!scanner) {
+                showToast("Thư viện quét mã QR chưa sẵn sàng. Vui lòng tải lại trang.");
+                return;
+            }
+
+            const cameraId = qrCameraSelect.value;
+            const cameraConfig = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: "environment" };
+
+            startQrCameraBtn.disabled = true;
+            startQrCameraBtn.textContent = "Đang khởi động...";
+
+            try {
+                await scanner.start(
+                    cameraConfig,
+                    {
+                        fps: 15,
+                        qrbox: { width: 220, height: 220 },
+                        aspectRatio: 1.333333
+                    },
+                    (decodedText) => {
+                        onScanSuccess(decodedText);
+                    },
+                    (error) => {
+                        /* Frame didn't contain QR, normal continuous scanning */
+                    }
+                );
+
+                isCameraRunning = true;
+                qrCameraContainer.classList.add("scanning");
+                qrPlaceholder.style.display = "none";
+                startQrCameraBtn.style.display = "none";
+                stopQrCameraBtn.style.display = "inline-flex";
+                showToast("Camera đã bật. Hãy hướng camera vào mã QR!");
+            } catch (err) {
+                showToast("Lỗi mở camera: " + (err.message || err));
+            } finally {
+                startQrCameraBtn.disabled = false;
+                startQrCameraBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Bật Camera`;
+            }
+        }
+
+        async function stopCamera() {
+            if (!isCameraRunning) return;
+            const scanner = getQrScannerInstance();
+            if (!scanner) return;
+
+            try {
+                await scanner.stop();
+            } catch (e) {
+                /* Ignore stop error */
+            }
+
+            isCameraRunning = false;
+            qrCameraContainer.classList.remove("scanning");
+            qrPlaceholder.style.display = "flex";
+            startQrCameraBtn.style.display = "inline-flex";
+            stopQrCameraBtn.style.display = "none";
+        }
+
+        function switchQrTab(tab) {
+            if (tab === "camera") {
+                qrTabCamera.classList.add("active");
+                qrTabCamera.setAttribute("aria-selected", "true");
+                qrTabUpload.classList.remove("active");
+                qrTabUpload.setAttribute("aria-selected", "false");
+                qrCameraView.classList.add("active");
+                qrUploadView.classList.remove("active");
+            } else {
+                qrTabUpload.classList.add("active");
+                qrTabUpload.setAttribute("aria-selected", "true");
+                qrTabCamera.classList.remove("active");
+                qrTabCamera.setAttribute("aria-selected", "false");
+                qrUploadView.classList.add("active");
+                qrCameraView.classList.remove("active");
+                if (isCameraRunning) {
+                    stopCamera();
+                }
+            }
+        }
+
+        function toggleQrScanner(forceOpen) {
+            const isHidden = qrScannerCard.classList.contains("hidden");
+            const shouldOpen = forceOpen !== undefined ? forceOpen : isHidden;
+
+            if (shouldOpen) {
+                qrScannerCard.classList.remove("hidden");
+                toggleQrBtn.classList.add("active");
+                toggleQrBtn.setAttribute("aria-expanded", "true");
+                loadCameraDevices();
+                qrScannerCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            } else {
+                qrScannerCard.classList.add("hidden");
+                toggleQrBtn.classList.remove("active");
+                toggleQrBtn.setAttribute("aria-expanded", "false");
+                if (isCameraRunning) {
+                    stopCamera();
+                }
+            }
+        }
+
+        function onScanSuccess(decodedText) {
+            if (!decodedText || decodedText === lastDecodedText) return;
+            lastDecodedText = decodedText;
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate([70, 30, 70]);
+
+            renderQrResult(decodedText);
+            showToast("Quét mã QR thành công!");
+        }
+
+        function renderQrResult(text) {
+            qrResultText.textContent = text;
+            const meta = parseUrlMeta(text);
+
+            if (meta.isUrl) {
+                qrResultBadge.className = "qr-result-badge badge-url";
+                qrResultBadge.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg> Liên kết URL hợp lệ`;
+                qrResultMeta.style.display = "flex";
+                qrMetaProtocol.textContent = meta.protocol;
+                qrMetaDomain.textContent = meta.domain;
+                qrAnalyzeBtn.style.display = "inline-flex";
+                qrFillBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> Chèn Vào Ô Nhập`;
+            } else {
+                qrResultBadge.className = "qr-result-badge badge-text";
+                qrResultBadge.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> Văn bản thuần (Không phải URL)`;
+                qrResultMeta.style.display = "none";
+                qrAnalyzeBtn.style.display = "none";
+                qrFillBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> Chèn Vào Ô Tìm Kiếm`;
+            }
+
+            qrResultBox.classList.remove("hidden");
+            qrResultBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
+        async function scanImageFile(file) {
+            if (!file) return;
+            const scanner = getQrScannerInstance();
+            if (!scanner) {
+                showToast("Thư viện quét mã QR chưa sẵn sàng. Vui lòng tải lại trang.");
+                return;
+            }
+
+            showToast("Đang quét mã QR từ hình ảnh...");
+
+            try {
+                if (isCameraRunning) {
+                    await stopCamera();
+                }
+                const decodedText = await scanner.scanFile(file, false);
+                onScanSuccess(decodedText);
+            } catch (err) {
+                showToast("Không tìm thấy mã QR trong hình ảnh. Hãy thử ảnh rõ nét hơn!");
+            }
+        }
+
+        // Event Listeners for QR Scanner
+        toggleQrBtn.addEventListener("click", () => toggleQrScanner());
+        closeQrBtn.addEventListener("click", () => toggleQrScanner(false));
+
+        qrTabCamera.addEventListener("click", () => switchQrTab("camera"));
+        qrTabUpload.addEventListener("click", () => switchQrTab("upload"));
+
+        startQrCameraBtn.addEventListener("click", startCamera);
+        stopQrCameraBtn.addEventListener("click", stopCamera);
+
+        qrCameraSelect.addEventListener("change", () => {
+            if (isCameraRunning) {
+                stopCamera().then(startCamera);
+            }
+        });
+
+        // Dropzone & File Input Events
+        qrDropzone.addEventListener("click", () => qrFileInput.click());
+
+        qrFileInput.addEventListener("change", (e) => {
+            if (e.target.files && e.target.files[0]) {
+                scanImageFile(e.target.files[0]);
+                e.target.value = "";
+            }
+        });
+
+        qrDropzone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            qrDropzone.classList.add("drag-over");
+        });
+
+        qrDropzone.addEventListener("dragleave", () => {
+            qrDropzone.classList.remove("drag-over");
+        });
+
+        qrDropzone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            qrDropzone.classList.remove("drag-over");
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                scanImageFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Global Paste Event (Ctrl + V to scan QR screenshot)
+        window.addEventListener("paste", (e) => {
+            const items = (e.clipboardData || window.clipboardData)?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.indexOf("image") !== -1) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        toggleQrScanner(true);
+                        switchQrTab("upload");
+                        scanImageFile(file);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Sample Quick Test Buttons
+        btnSampleSafe.addEventListener("click", async () => {
+            try {
+                const res = await fetch("/static/img/sample_qr.png");
+                const blob = await res.blob();
+                const file = new File([blob], "sample_safe_qr.png", { type: "image/png" });
+                scanImageFile(file);
+            } catch (e) {
+                showToast("Không thể tải ảnh mẫu: " + e.message);
+            }
+        });
+
+        btnSamplePhishing.addEventListener("click", async () => {
+            try {
+                const res = await fetch("/static/img/sample_phishing_qr.png");
+                const blob = await res.blob();
+                const file = new File([blob], "sample_phishing_qr.png", { type: "image/png" });
+                scanImageFile(file);
+            } catch (e) {
+                showToast("Không thể tải ảnh mẫu: " + e.message);
+            }
+        });
+
+        // QR Result Action Buttons
+        qrCopyBtn.addEventListener("click", () => {
+            if (!lastDecodedText) return;
+            navigator.clipboard.writeText(lastDecodedText).then(() => {
+                showToast("Đã sao chép liên kết vào bộ nhớ tạm!");
+            }).catch(() => {
+                showToast("Không thể sao chép liên kết.");
+            });
+        });
+
+        qrFillBtn.addEventListener("click", () => {
+            if (!lastDecodedText) return;
+            urlInput.value = lastDecodedText;
+            urlInput.focus();
+            showToast("Đã điền liên kết vào ô kiểm tra!");
+        });
+
+        qrAnalyzeBtn.addEventListener("click", () => {
+            if (!lastDecodedText) return;
+            urlInput.value = lastDecodedText;
+            showToast("Đang kích hoạt phân tích rủi ro URL...");
+            analyzeBtn.click();
+            resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+
+        qrResetBtn.addEventListener("click", () => {
+            lastDecodedText = "";
+            qrResultBox.classList.add("hidden");
+            if (qrTabCamera.classList.contains("active") && !isCameraRunning) {
+                startCamera();
+            }
+        });
+    </script>
+
+    <!-- Floating Toast Notification -->
+    <div id="qrToast" class="qr-toast" role="status" aria-live="polite">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span id="qrToastMsg">Đã sao chép!</span>
+    </div>
+</body>
+
+</html>

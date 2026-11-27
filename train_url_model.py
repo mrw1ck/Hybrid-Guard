@@ -59,15 +59,90 @@ def ensure_features(dataframe: pd.DataFrame) -> pd.DataFrame:
     if not missing_features:
         return dataframe
 
-    if "url" not in dataframe.columns:
+    def normalized_name(column: str) -> str:
+        return "".join(character for character in str(column).casefold() if character.isalnum())
+
+    url_column = next(
+        (column for column in dataframe.columns if normalized_name(column) in {"url", "urldecoded"}),
+        None,
+    )
+    if url_column is None:
         raise ValueError(
-            "Dataset is missing required numeric feature columns and also has no 'url' column to regenerate them.",
+            "Dataset is missing required numeric feature columns and has no URL column "
+            "(such as 'url' or 'URL_decoded') to regenerate them. "
+            f"Available columns: {', '.join(map(str, dataframe.columns))}",
         )
 
-    generated_features = dataframe["url"].apply(extract_url_features).apply(pd.Series)
+    urls = dataframe[url_column].fillna("").astype(str)
+    generated_features = urls.apply(extract_url_features).apply(pd.Series)
     for column in NUMERIC_FEATURES:
         dataframe[column] = generated_features[column]
     return dataframe
+
+
+def resolve_column(dataframe: pd.DataFrame, requested_column: str) -> str:
+    if requested_column in dataframe.columns:
+        return requested_column
+
+    matching_column = next(
+        (
+            column
+            for column in dataframe.columns
+            if str(column).strip().lstrip("\ufeff").casefold() == requested_column.strip().casefold()
+        ),
+        None,
+    )
+    if matching_column is not None:
+        return matching_column
+
+    available_columns = ", ".join(str(column) for column in dataframe.columns)
+    raise ValueError(
+        f"Missing label column: {requested_column}. Available columns: {available_columns}",
+    )
+
+
+def normalize_labels(labels: pd.Series) -> pd.Series:
+    numeric_labels = pd.to_numeric(labels, errors="coerce")
+    if numeric_labels.notna().all():
+        numeric_classes = set(numeric_labels.unique())
+        if numeric_classes != {0, 1}:
+            raise ValueError(
+                f"Expected both binary classes 0 (benign) and 1 (malicious), found: {sorted(numeric_classes)}",
+            )
+        normalized = numeric_labels.astype(int)
+    else:
+        label_mapping = {
+            "0": 0,
+            "benign": 0,
+            "clean": 0,
+            "good": 0,
+            "legit": 0,
+            "legitimate": 0,
+            "non-phishing": 0,
+            "non_phishing": 0,
+            "safe": 0,
+            "1": 1,
+            "bad": 1,
+            "malicious": 1,
+            "malware": 1,
+            "phish": 1,
+            "phishing": 1,
+        }
+        normalized_values = labels.astype(str).str.strip().str.casefold()
+        unknown_labels = sorted(set(normalized_values) - label_mapping.keys())
+        if unknown_labels:
+            raise ValueError(
+                "Unrecognized label values: "
+                f"{unknown_labels[:10]}. Expected binary 0/1 labels or recognized benign/phishing labels.",
+            )
+        normalized = normalized_values.map(label_mapping).astype(int)
+
+    classes = set(normalized.unique())
+    if classes != {0, 1}:
+        raise ValueError(
+            f"Expected both binary classes 0 (benign) and 1 (malicious), found: {sorted(classes)}",
+        )
+    return normalized
 
 
 def build_model(args: argparse.Namespace):
@@ -116,18 +191,18 @@ def main() -> None:
 
     print(f"Loading dataset from: {data_path}...")
     dataframe = pd.read_csv(data_path)
-    if args.label_col not in dataframe.columns:
-        raise ValueError(f"Missing label column: {args.label_col}")
+    dataframe.columns = [str(column).strip().lstrip("\ufeff") for column in dataframe.columns]
+    label_column = resolve_column(dataframe, args.label_col)
 
     dataframe = ensure_features(dataframe.copy())
-    dataframe = dataframe.dropna(subset=[args.label_col])
+    dataframe = dataframe.dropna(subset=[label_column])
 
     if args.sample_limit and args.sample_limit > 0 and len(dataframe) > args.sample_limit:
         dataframe = dataframe.sample(n=args.sample_limit, random_state=args.random_state)
         print(f"Sampled {args.sample_limit} rows from dataset for training.")
 
     X = dataframe[NUMERIC_FEATURES].astype(float)
-    y = dataframe[args.label_col].astype(int)
+    y = normalize_labels(dataframe[label_column])
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
